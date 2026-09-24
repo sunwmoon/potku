@@ -211,6 +211,82 @@ class TestTofeTheory(unittest.TestCase):
         self.assertEqual([locus.label for locus in loci], ["1H", "16O"])
         self.assertEqual(loci[0].tof_channel.shape, (4,))
 
+    def test_measurement_adapter_uses_foil_losses_when_available(self):
+        measurement = SimpleNamespace(
+            run=SimpleNamespace(
+                beam=SimpleNamespace(
+                    ion=FakeElement("127I", 126.904_473), energy=30
+                )
+            ),
+            detector=FakeDetector(),
+        )
+        recoil = FakeElement("16O", 15.994_915)
+
+        loci = calculate_loci_for_measurement(
+            measurement,
+            [recoil],
+            LinearCalibration(0.01),
+            minimum_energy_fraction=0.5,
+            point_count=3,
+            foil_loss_factory=lambda detector, element: (
+                lambda energy: np.full_like(energy, 0.1),
+                lambda energy: np.full_like(energy, 0.2),
+            ),
+        )
+
+        self.assertEqual(loci[0].prediction_mode, "Foil-corrected")
+        self.assertIsNone(loci[0].prediction_warning)
+
+    def test_measurement_adapter_falls_back_to_ideal_on_stopping_error(self):
+        measurement = SimpleNamespace(
+            run=SimpleNamespace(
+                beam=SimpleNamespace(
+                    ion=FakeElement("127I", 126.904_473), energy=30
+                )
+            ),
+            detector=FakeDetector(),
+        )
+        recoil = FakeElement("16O", 15.994_915)
+
+        loci = calculate_loci_for_measurement(
+            measurement,
+            [recoil],
+            LinearCalibration(0.01),
+            point_count=3,
+            foil_loss_factory=lambda detector, element: (_ for _ in ()).throw(
+                RuntimeError("jibaltool unavailable")
+            ),
+        )
+
+        self.assertEqual(loci[0].prediction_mode, "Ideal")
+        self.assertEqual(
+            loci[0].prediction_warning, "jibaltool unavailable"
+        )
+
+    def test_settings_can_disable_detector_foil_correction(self):
+        measurement = SimpleNamespace(
+            run=SimpleNamespace(
+                beam=SimpleNamespace(
+                    ion=FakeElement("127I", 126.904_473), energy=30
+                )
+            ),
+            detector=FakeDetector(),
+        )
+        settings = TheoryPredictionSettings.from_text(
+            "16O", 0.001, point_count=3, use_detector_foils=False
+        )
+        factory = unittest.mock.Mock()
+
+        loci = calculate_loci_from_settings(
+            measurement,
+            settings,
+            lambda token: FakeElement(token, 15.994_915),
+            foil_loss_factory=factory,
+        )
+
+        factory.assert_not_called()
+        self.assertEqual(loci[0].prediction_mode, "Ideal")
+
 
 class FakeElement:
     """Minimal implementation of the Element interface used by the adapter."""

@@ -6,6 +6,8 @@ import numpy as np
 from modules.tofe_stopping import CarbonStoppingInterpolator
 from modules.tofe_stopping import MEV_TO_JOULE
 from modules.tofe_stopping import StoppingCalculationError
+from modules.tofe_stopping import SequentialEnergyLoss
+from modules.tofe_stopping import build_detector_carbon_stopping
 
 
 class TestCarbonStoppingInterpolator(unittest.TestCase):
@@ -84,6 +86,52 @@ class TestCarbonStoppingInterpolator(unittest.TestCase):
                     stopping(np.array([1.0, 2.0]))
 
 
+class TestDetectorCarbonStopping(unittest.TestCase):
+    def test_reads_ordered_timing_foil_layers_and_chains_downstream(self):
+        created = []
+
+        def factory(symbol, isotope, thickness, density):
+            created.append((symbol, isotope, thickness, density))
+            return lambda energy, value=thickness / 100: np.full_like(
+                energy, value, dtype=float
+            )
+
+        detector = fake_detector((1, 2), (13.0, 44.0))
+        element = mock.Mock(symbol="O", isotope=16)
+
+        first, downstream = build_detector_carbon_stopping(
+            detector, element, interpolator_factory=factory
+        )
+
+        np.testing.assert_allclose(first(np.array([5.0])), [0.13])
+        np.testing.assert_allclose(downstream(np.array([5.0])), [0.44])
+        self.assertEqual(
+            created,
+            [("O", 16, 13.0, 2.25), ("O", 16, 44.0, 2.25)],
+        )
+
+    def test_rejects_non_carbon_timing_foil(self):
+        detector = fake_detector((0, 1), (13.0, 44.0))
+        detector.foils[1].layers[0].elements[0].symbol = "Si"
+
+        with self.assertRaisesRegex(
+                StoppingCalculationError, "not a single-element carbon"):
+            build_detector_carbon_stopping(
+                detector, mock.Mock(symbol="O", isotope=16)
+            )
+
+    def test_sequential_loss_passes_remaining_energy_to_next_layer(self):
+        second_incident = []
+        loss = SequentialEnergyLoss((
+            lambda energy: energy * 0.1,
+            lambda energy: second_incident.append(energy.copy()) or
+            energy * 0.2,
+        ))
+
+        np.testing.assert_allclose(loss(np.array([10.0])), [2.8])
+        np.testing.assert_allclose(second_incident[0], [9.0])
+
+
 class FakeStoppingBackend:
     def __init__(self, loss_mev):
         self.loss_mev = loss_mev
@@ -92,6 +140,18 @@ class FakeStoppingBackend:
     def __call__(self, element, isotope, energy, thickness, density):
         self.call_count += 1
         return self.loss_mev(energy) * MEV_TO_JOULE
+
+
+def fake_detector(timing_indices, thicknesses):
+    placeholder = mock.Mock(layers=[])
+    foils = [placeholder for _ in range(max(timing_indices) + 1)]
+    for index, thickness in zip(timing_indices, thicknesses):
+        carbon = mock.Mock(symbol="C")
+        layer = mock.Mock(
+            elements=[carbon], thickness=thickness, density=2.25
+        )
+        foils[index] = mock.Mock(layers=[layer])
+    return mock.Mock(tof_foils=list(timing_indices), foils=foils)
 
 
 if __name__ == "__main__":

@@ -42,6 +42,7 @@ from modules.element import Element
 from modules.measurement import Measurement
 from modules.tofe_overlay import draw_theory_loci
 from modules.tofe_theory import calculate_loci_from_settings
+from modules.tofe_stopping import build_detector_carbon_stopping
 from dialogs.energy_spectrum import EnergySpectrumWidget
 from dialogs.graph_settings import TofeGraphSettingsWidget
 from dialogs.measurement.depth_profile import DepthProfileWidget
@@ -480,7 +481,8 @@ class MatplotlibHistogramWidget(MatplotlibWidget):
         try:
             settings = dialog.prediction_settings()
             loci = calculate_loci_from_settings(
-                self.measurement, settings, Element.from_string
+                self.measurement, settings, Element.from_string,
+                foil_loss_factory=build_detector_carbon_stopping,
             )
         except (TypeError, ValueError) as error:
             QtWidgets.QMessageBox.warning(
@@ -494,7 +496,33 @@ class MatplotlibHistogramWidget(MatplotlibWidget):
         self.__theory_loci = tuple(loci)
         self.theoryOverlayButton.setEnabled(True)
         self.theoryOverlayButton.setChecked(True)
+        self._update_theory_mode_display()
         self.on_draw()
+
+    def _update_theory_mode_display(self):
+        """Expose correction/fallback state without altering element labels."""
+        modes = {locus.prediction_mode for locus in self.__theory_loci}
+        warnings = [
+            f"{locus.label}: {locus.prediction_warning}"
+            for locus in self.__theory_loci
+            if locus.prediction_warning
+        ]
+        if not modes:
+            label = "Show"
+        elif modes == {"Foil-corrected"}:
+            label = "Foil"
+        elif modes == {"Ideal"}:
+            label = "Ideal"
+        else:
+            label = "Mixed"
+        self.theoryOverlayButton.setText(label)
+        tooltip = (
+            "Show theoretical element positions and detector-resolution "
+            "bands (not saved as selections). Mode: " + label
+        )
+        if warnings:
+            tooltip += "\nIdeal fallback:\n" + "\n".join(warnings)
+        self.theoryOverlayButton.setToolTip(tooltip)
 
     def set_theory_loci(self, loci):
         """Replace the non-persistent theoretical overlay data.
@@ -504,6 +532,7 @@ class MatplotlibHistogramWidget(MatplotlibWidget):
         iterable clears and disables the overlay.
         """
         self.__theory_loci = tuple(loci)
+        self._update_theory_mode_display()
         has_loci = bool(self.__theory_loci)
         self.theoryOverlayButton.setEnabled(has_loci)
         if not has_loci:

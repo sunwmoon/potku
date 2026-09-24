@@ -304,3 +304,60 @@ Next:
    to the histogram without creating a selection.
 3. In an environment with built JIBAL, compare 24-point interpolation with a
    dense direct calculation and set an accuracy-based sampling tolerance.
+
+## 2026-09-24 20:01 KST - Detector timing-foil integration
+
+Implemented:
+
+- Read the ordered timing-foil indexes, carbon layer thicknesses, and
+  densities from the active Potku `Detector` rather than requiring duplicate
+  runtime inputs.
+- Built one cached carbon-stopping interpolator per timing foil and recoil
+  isotope. The first timing foil now supplies the pre-flight loss, while later
+  timing foils are applied sequentially to the post-flight detector energy.
+- Added an enabled-by-default `Apply carbon timing-foil energy loss` option to
+  the theory dialog. Turning it off preserves the exact ideal calculation.
+- Connected detector foil loss to runtime theory calculation. Unsupported
+  foil layouts, unavailable isotopes, JIBAL errors, and nonphysical stopping
+  results fall back independently to the ideal locus for each element.
+- Added `Foil`, `Ideal`, and `Mixed` states to the histogram theory toggle.
+  Fallback reasons are available in its tooltip while element labels remain
+  unchanged.
+- Kept all loci and status fields transient; no prediction is added to or
+  saved through `Measurement.selector`.
+
+Verification:
+
+- `python -m unittest tests.unit.test_tofe_theory`
+  `tests.unit.test_tofe_overlay tests.unit.test_tofe_stopping`:
+  **32 tests passed**.
+- Tests cover detector foil extraction, ordered multi-foil energy loss,
+  foil-aware measurement calculation, per-element ideal fallback, and the
+  user-controlled ideal-only mode.
+- `python -m compileall -q` for all changed Python files: **passed**.
+- `git diff --check`: **passed**.
+
+Failure / limitation:
+
+- The first new fixture used Potku's default timing indexes `(1, 2)` without
+  creating the preceding non-timing foil, so its initial test run failed with
+  an out-of-range index. The fixture was corrected to preserve actual detector
+  indexing; the production bounds check was retained and all tests pass.
+- This integration corrects carbon timing foils only. A downstream SiN energy
+  detector window and target energy loss are not yet modeled, so `Foil` means
+  carbon timing-foil corrected rather than a complete transport simulation.
+- PyQt5 and an initialized JIBAL executable/data installation remain absent in
+  this environment. GUI rendering and numerical comparison against real JIBAL
+  stopping values therefore remain pending; runtime failure is covered by the
+  tested ideal fallback.
+
+Next:
+
+1. Add a lightweight overlay report/export containing predicted channel
+   endpoints, correction mode, and fallback reason so the result can be
+   checked against a real histogram without inspecting tooltips.
+2. Initialize JIBAL in a Potku development environment and compare cached
+   interpolation against direct carbon stopping over representative H, D, C,
+   O, and Si recoil-energy ranges.
+3. Add target/dead-layer transport interfaces before using theory distance as
+   an automatic banana-candidate confidence feature.

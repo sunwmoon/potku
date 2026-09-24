@@ -41,11 +41,21 @@ class TheoryPredictionDialog(QtWidgets.QDialog):
         self.minimum_fraction.setSingleStep(0.01)
         self.minimum_fraction.setValue(0.08)
 
+        self.use_detector_foils = QtWidgets.QCheckBox(
+            "Apply carbon timing-foil energy loss"
+        )
+        self.use_detector_foils.setChecked(True)
+        self.use_detector_foils.setToolTip(
+            "Uses detector timing-foil thickness and density. Falls back "
+            "to the ideal locus if JIBAL stopping is unavailable."
+        )
+
         form = QtWidgets.QFormLayout()
         form.addRow("Recoil isotopes/elements:", self.element_edit)
         form.addRow("Energy calibration slope:", self.energy_slope)
         form.addRow("Energy calibration offset:", self.energy_offset)
         form.addRow("Minimum energy fraction:", self.minimum_fraction)
+        form.addRow("Foil correction:", self.use_detector_foils)
 
         buttons = QtWidgets.QDialogButtonBox(
             QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel
@@ -65,4 +75,5 @@ class TheoryPredictionDialog(QtWidgets.QDialog):
             self.energy_slope.value(),
             self.energy_offset.value(),
             self.minimum_fraction.value(),
+            use_detector_foils=self.use_detector_foils.isChecked(),
         )

@@ -64,6 +64,8 @@ class ChannelLocus:
     maximum_recoil_energy_mev: float
     tof_resolution_fwhm_channel: float = None
     energy_resolution_fwhm_channel: float = None
+    prediction_mode: str = "Ideal"
+    prediction_warning: str = None
 
 
 @dataclass(frozen=True)
@@ -74,6 +76,7 @@ class TheoryPredictionSettings:
     energy_calibration: LinearCalibration
     minimum_energy_fraction: float = 0.08
     point_count: int = 300
+    use_detector_foils: bool = True
 
     def __post_init__(self):
         if not self.element_tokens:
@@ -95,7 +98,7 @@ class TheoryPredictionSettings:
     @classmethod
     def from_text(cls, element_text, energy_slope_mev_per_channel,
                   energy_offset_mev=0.0, minimum_energy_fraction=0.08,
-                  point_count=300):
+                  point_count=300, use_detector_foils=True):
         """Parse comma/whitespace-separated isotope symbols into settings."""
         tokens = tuple(filter(None, re.split(r"[\s,]+", element_text.strip())))
         invalid = [
@@ -116,6 +119,7 @@ class TheoryPredictionSettings:
             ),
             minimum_energy_fraction=float(minimum_energy_fraction),
             point_count=int(point_count),
+            use_detector_foils=bool(use_detector_foils),
         )
 
 
@@ -234,7 +238,8 @@ def calculate_foil_aware_locus(
 def calculate_loci_for_measurement(
         measurement, recoil_elements: Sequence,
         energy_calibration: LinearCalibration,
-        minimum_energy_fraction=0.08, point_count=300
+        minimum_energy_fraction=0.08, point_count=300,
+        foil_loss_factory=None,
 ) -> Tuple[ChannelLocus, ...]:
     """Build plot-ready ideal loci from a Potku ``Measurement``.
 
@@ -287,16 +292,40 @@ def calculate_loci_for_measurement(
                 "Recoil elements must provide get_prefix()"
             ) from error
 
-        ideal_locus = calculate_ideal_locus(
-            beam_mass_u=beam_mass_u,
-            beam_energy_mev=beam_energy_mev,
-            recoil_mass_u=recoil_mass_u,
-            recoil_angle_deg=recoil_angle_deg,
-            flight_length_m=flight_length_m,
-            minimum_energy_fraction=minimum_energy_fraction,
-            point_count=point_count,
-        )
-        tof_channel, energy_channel = ideal_locus.as_channels(
+        prediction_mode = "Ideal"
+        prediction_warning = None
+        locus = None
+        if foil_loss_factory is not None:
+            try:
+                first_loss, downstream_loss = foil_loss_factory(
+                    detector, element
+                )
+                locus = calculate_foil_aware_locus(
+                    beam_mass_u=beam_mass_u,
+                    beam_energy_mev=beam_energy_mev,
+                    recoil_mass_u=recoil_mass_u,
+                    recoil_angle_deg=recoil_angle_deg,
+                    flight_length_m=flight_length_m,
+                    first_foil_loss=first_loss,
+                    downstream_loss=downstream_loss,
+                    minimum_energy_fraction=minimum_energy_fraction,
+                    point_count=point_count,
+                )
+                prediction_mode = "Foil-corrected"
+            except (OSError, RuntimeError, TypeError, ValueError) as error:
+                prediction_warning = str(error)
+
+        if locus is None:
+            locus = calculate_ideal_locus(
+                beam_mass_u=beam_mass_u,
+                beam_energy_mev=beam_energy_mev,
+                recoil_mass_u=recoil_mass_u,
+                recoil_angle_deg=recoil_angle_deg,
+                flight_length_m=flight_length_m,
+                minimum_energy_fraction=minimum_energy_fraction,
+                point_count=point_count,
+            )
+        tof_channel, energy_channel = locus.as_channels(
             tof_calibration, energy_calibration
         )
         loci.append(ChannelLocus(
@@ -304,7 +333,7 @@ def calculate_loci_for_measurement(
             tof_channel=tof_channel,
             energy_channel=energy_channel,
             maximum_recoil_energy_mev=(
-                ideal_locus.maximum_recoil_energy_mev
+                locus.maximum_recoil_energy_mev
             ),
             tof_resolution_fwhm_channel=(
                 tof_resolution_fwhm_channel
@@ -312,12 +341,15 @@ def calculate_loci_for_measurement(
             energy_resolution_fwhm_channel=(
                 energy_resolution_fwhm_channel
             ),
+            prediction_mode=prediction_mode,
+            prediction_warning=prediction_warning,
         ))
 
     return tuple(loci)
 
 
-def calculate_loci_from_settings(measurement, settings, element_factory):
+def calculate_loci_from_settings(measurement, settings, element_factory,
+                                 foil_loss_factory=None):
     """Create elements from validated settings and calculate channel loci.
 
     ``element_factory`` is explicit so this Qt-independent module does not
@@ -333,6 +365,9 @@ def calculate_loci_from_settings(measurement, settings, element_factory):
         settings.energy_calibration,
         minimum_energy_fraction=settings.minimum_energy_fraction,
         point_count=settings.point_count,
+        foil_loss_factory=(
+            foil_loss_factory if settings.use_detector_foils else None
+        ),
     )
 
 

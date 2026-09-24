@@ -8,6 +8,7 @@ separate from the GUI so failures can leave the existing ideal overlay intact.
 
 from typing import Callable
 from typing import Optional
+from typing import Tuple
 
 import numpy as np
 
@@ -19,6 +20,31 @@ MEV_TO_JOULE = 1.602_176_634e-13
 
 class StoppingCalculationError(RuntimeError):
     """Raised when a stopping backend cannot produce a usable loss table."""
+
+
+class SequentialEnergyLoss:
+    """Apply several energy-loss callbacks in their physical order."""
+
+    def __init__(self, loss_functions):
+        self.loss_functions = tuple(loss_functions)
+
+    def __call__(self, energy_mev):
+        incident = np.asarray(energy_mev, dtype=float)
+        remaining = incident.copy()
+        for loss_function in self.loss_functions:
+            loss = np.asarray(loss_function(remaining), dtype=float)
+            try:
+                loss = np.broadcast_to(loss, remaining.shape)
+            except ValueError as error:
+                raise StoppingCalculationError(
+                    "Stopping layer returned an incompatible result shape"
+                ) from error
+            remaining = remaining - loss
+            if not np.all(np.isfinite(remaining)) or np.any(remaining <= 0):
+                raise StoppingCalculationError(
+                    "Detector foil stopping must leave positive energy"
+                )
+        return incident - remaining
 
 
 class CarbonStoppingInterpolator:
@@ -136,3 +162,105 @@ class CarbonStoppingInterpolator:
             element, isotope, energy, thickness, density,
             verbose=False, strict=True,
         )
+
+
+def build_detector_carbon_stopping(
+        detector, recoil_element,
+        interpolator_factory=CarbonStoppingInterpolator
+) -> Tuple[Callable, Callable]:
+    """Build loss callbacks from a detector's carbon timing foils.
+
+    The first timing foil is traversed before the measured flight interval;
+    each later timing foil is traversed after it. Potku currently documents
+    timing foils as one-layer carbon foils, so unsupported detector layouts
+    fail explicitly and let the caller retain an ideal prediction.
+    """
+    try:
+        timing_indices = tuple(detector.tof_foils)
+        foils = detector.foils
+    except (AttributeError, TypeError) as error:
+        raise StoppingCalculationError(
+            "Detector does not provide timing-foil settings"
+        ) from error
+
+    if len(timing_indices) < 2:
+        raise StoppingCalculationError(
+            "At least two timing foils are required for foil correction"
+        )
+    if tuple(sorted(timing_indices)) != timing_indices:
+        raise StoppingCalculationError(
+            "Timing foils must be ordered from target to detector"
+        )
+
+    symbol, isotope = _stopping_isotope(recoil_element)
+    foil_losses = []
+    for index in timing_indices:
+        try:
+            foil = foils[index]
+        except (IndexError, TypeError) as error:
+            raise StoppingCalculationError(
+                f"Timing-foil index {index} is outside detector.foils"
+            ) from error
+        layer = _single_carbon_layer(foil, index)
+        foil_losses.append(interpolator_factory(
+            symbol,
+            isotope,
+            float(layer.thickness),
+            float(layer.density),
+        ))
+
+    return foil_losses[0], SequentialEnergyLoss(foil_losses[1:])
+
+
+def _stopping_isotope(element):
+    try:
+        symbol = element.symbol
+        isotope = element.isotope
+    except AttributeError as error:
+        raise StoppingCalculationError(
+            "Recoil element must provide symbol and isotope"
+        ) from error
+    if not symbol:
+        raise StoppingCalculationError("Recoil element symbol is missing")
+    if isotope is None:
+        try:
+            isotope = element.get_most_common_isotope()
+        except AttributeError:
+            isotope = None
+    if isotope is None:
+        raise StoppingCalculationError(
+            f"No isotope is available for recoil element {symbol}"
+        )
+    return symbol, int(round(float(isotope)))
+
+
+def _single_carbon_layer(foil, index):
+    try:
+        layers = foil.layers
+    except AttributeError as error:
+        raise StoppingCalculationError(
+            f"Timing foil {index} does not provide layers"
+        ) from error
+    if len(layers) != 1:
+        raise StoppingCalculationError(
+            f"Timing foil {index} must contain exactly one carbon layer"
+        )
+    layer = layers[0]
+    try:
+        elements = layer.elements
+        thickness = float(layer.thickness)
+        density = float(layer.density)
+    except (AttributeError, TypeError, ValueError) as error:
+        raise StoppingCalculationError(
+            f"Timing foil {index} has incomplete layer settings"
+        ) from error
+    if len(elements) != 1 or getattr(elements[0], "symbol", None) != "C":
+        raise StoppingCalculationError(
+            f"Timing foil {index} is not a single-element carbon layer"
+        )
+    if not np.isfinite(thickness) or thickness <= 0 or \
+            not np.isfinite(density) or density <= 0:
+        raise StoppingCalculationError(
+            f"Timing foil {index} thickness and density must be positive"
+        )
+    return layer
