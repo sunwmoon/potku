@@ -40,6 +40,8 @@ import widgets.gui_utils as gutils
 from modules.enums import ToFEColorScheme
 from modules.element import Element
 from modules.measurement import Measurement
+from modules.tofe_candidate import build_candidate_histogram
+from modules.tofe_candidate import propose_banana_candidates
 from modules.tofe_overlay import draw_candidate_proposals
 from modules.tofe_overlay import draw_theory_loci
 from modules.tofe_theory import calculate_loci_from_settings
@@ -491,6 +493,17 @@ class MatplotlibHistogramWidget(MatplotlibWidget):
         )
         self.mpl_toolbar.addWidget(self.theoryReportButton)
 
+        self.suggestCandidatesButton = QtWidgets.QToolButton(self)
+        self.suggestCandidatesButton.setText("Suggest")
+        self.suggestCandidatesButton.setEnabled(False)
+        self.suggestCandidatesButton.clicked.connect(
+            self.suggest_candidate_proposals
+        )
+        self.suggestCandidatesButton.setToolTip(
+            "Detect transient banana proposals from this histogram"
+        )
+        self.mpl_toolbar.addWidget(self.suggestCandidatesButton)
+
         self.candidateOverlayButton = QtWidgets.QToolButton(self)
         self.candidateOverlayButton.setText("Candidates")
         self.candidateOverlayButton.setCheckable(True)
@@ -527,6 +540,7 @@ class MatplotlibHistogramWidget(MatplotlibWidget):
         self.theoryOverlayButton.setEnabled(True)
         self.theoryOverlayButton.setChecked(True)
         self.theoryReportButton.setEnabled(True)
+        self.suggestCandidatesButton.setEnabled(True)
         self._update_theory_mode_display()
         self.on_draw()
 
@@ -579,6 +593,7 @@ class MatplotlibHistogramWidget(MatplotlibWidget):
         has_loci = bool(self.__theory_loci)
         self.theoryOverlayButton.setEnabled(has_loci)
         self.theoryReportButton.setEnabled(has_loci)
+        self.suggestCandidatesButton.setEnabled(has_loci)
         if not has_loci:
             self.theoryOverlayButton.setChecked(False)
         self.on_draw()
@@ -587,10 +602,57 @@ class MatplotlibHistogramWidget(MatplotlibWidget):
         """Remove all theoretical overlay data without touching selections."""
         self.set_theory_loci(())
 
+    def suggest_candidate_proposals(self):
+        """Detect proposals on explicit request; never save selections."""
+        if not self.__theory_loci:
+            return
+        if self.transpose_axes:
+            tof_compression = self.compression_y
+            energy_compression = self.compression_x
+        else:
+            tof_compression = self.compression_x
+            energy_compression = self.compression_y
+        try:
+            grid = build_candidate_histogram(
+                self.__x_data,
+                self.__y_data,
+                tof_compression,
+                energy_compression,
+                max_bin_count=MatplotlibHistogramWidget.MAX_BIN_COUNT,
+            )
+            candidates = propose_banana_candidates(
+                grid.counts,
+                grid.tof_edges,
+                grid.energy_edges,
+                self.__theory_loci,
+            )
+        except (TypeError, ValueError) as error:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Banana suggestions",
+                str(error),
+                QtWidgets.QMessageBox.Ok,
+            )
+            return
+
+        self.set_candidate_proposals(candidates)
+        if not candidates:
+            QtWidgets.QMessageBox.information(
+                self,
+                "Banana suggestions",
+                "No candidate passed the current confidence thresholds. "
+                "No selection was created or saved.",
+                QtWidgets.QMessageBox.Ok,
+            )
+
     def set_candidate_proposals(self, candidates):
         """Display non-persistent proposals without creating selections."""
         self.__candidate_proposals = tuple(candidates)
         has_candidates = bool(self.__candidate_proposals)
+        self.candidateOverlayButton.setText(
+            f"Candidates ({len(self.__candidate_proposals)})"
+            if has_candidates else "Candidates"
+        )
         self.candidateOverlayButton.setEnabled(has_candidates)
         self.candidateOverlayButton.setChecked(has_candidates)
         self.on_draw()
@@ -601,6 +663,7 @@ class MatplotlibHistogramWidget(MatplotlibWidget):
 
     def _clear_candidate_proposals(self, redraw):
         self.__candidate_proposals = ()
+        self.candidateOverlayButton.setText("Candidates")
         self.candidateOverlayButton.setEnabled(False)
         self.candidateOverlayButton.setChecked(False)
         if redraw:

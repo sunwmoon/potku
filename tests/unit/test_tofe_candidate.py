@@ -3,6 +3,7 @@ import unittest
 import numpy as np
 
 from modules.tofe_candidate import CandidateSearchSettings
+from modules.tofe_candidate import build_candidate_histogram
 from modules.tofe_candidate import propose_banana_candidates
 from modules.tofe_theory import ChannelLocus
 
@@ -117,6 +118,68 @@ class TestTofeCandidate(unittest.TestCase):
                 self.y_edges,
                 [self.locus],
             )
+
+    def test_builds_energy_row_tof_column_histogram_from_events(self):
+        grid = build_candidate_histogram(
+            tof_channels=[0.0, 0.2, 1.0, 1.2],
+            energy_channels=[10.0, 10.2, 11.0, 11.2],
+            tof_compression=0.5,
+            energy_compression=0.5,
+        )
+
+        self.assertEqual(grid.counts.shape, (2, 2))
+        np.testing.assert_allclose(grid.counts, [[2.0, 0.0], [0.0, 2.0]])
+        self.assertEqual(grid.tof_edges.size, 3)
+        self.assertEqual(grid.energy_edges.size, 3)
+        self.assertEqual(np.sum(grid.counts), 4)
+
+    def test_histogram_builder_caps_bins_and_handles_constant_axis(self):
+        grid = build_candidate_histogram(
+            tof_channels=[0.0, 100.0],
+            energy_channels=[5.0, 5.0],
+            tof_compression=0.01,
+            energy_compression=1.0,
+            max_bin_count=20,
+        )
+
+        self.assertEqual(grid.counts.shape, (1, 20))
+        self.assertEqual(np.sum(grid.counts), 2)
+
+    def test_histogram_builder_rejects_invalid_raw_events(self):
+        invalid_arguments = (
+            ([1.0], [1.0, 2.0], 1.0, 1.0),
+            ([1.0, np.nan], [1.0, 2.0], 1.0, 1.0),
+            ([1.0], [1.0], 0.0, 1.0),
+        )
+        for arguments in invalid_arguments:
+            with self.subTest(arguments=arguments):
+                with self.assertRaises(ValueError):
+                    build_candidate_histogram(*arguments)
+
+    def test_raw_events_to_candidate_end_to_end(self):
+        rng = np.random.default_rng(42)
+        tof = np.repeat(np.linspace(20.0, 80.0, 61), 20)
+        tof = tof + rng.normal(0.0, 0.3, tof.size)
+        energy = 0.6 * tof + 10.0 + rng.normal(0.0, 1.0, tof.size)
+        tof = np.concatenate((tof, rng.uniform(10.0, 90.0, 300)))
+        energy = np.concatenate((
+            energy, rng.uniform(10.0, 70.0, 300)
+        ))
+        grid = build_candidate_histogram(tof, energy, 1.0, 1.0)
+
+        candidates = propose_banana_candidates(
+            grid.counts,
+            grid.tof_edges,
+            grid.energy_edges,
+            [self.locus],
+            CandidateSearchSettings(
+                sample_count=31, minimum_confidence=0.15
+            ),
+        )
+
+        self.assertEqual(len(candidates), 1)
+        self.assertGreater(candidates[0].confidence, 0.8)
+        self.assertGreater(candidates[0].coverage, 0.9)
 
 
 if __name__ == "__main__":

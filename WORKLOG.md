@@ -534,3 +534,64 @@ Next:
    transient data.
 3. Add draggable proposal vertices for Edit while keeping changes outside
    `Measurement.selector` until the user confirms acceptance.
+
+## 2026-09-25 00:02 KST - Raw measurement histogram bridge
+
+Implemented:
+
+- Added `build_candidate_histogram()` to convert raw Potku event channels into
+  an explicit canonical grid: Energy bins are rows and ToF bins are columns.
+- Applied the same integer span/compression bin-count rule used by the existing
+  histogram widget, including one-bin handling for constant axes and a maximum
+  bin-count cap.
+- Added finite-value, equal-length, non-empty, positive-compression, and
+  maximum-bin-count validation before allocating the histogram.
+- Added an explicit `Suggest` toolbar action. It is enabled only after theory
+  loci exist and runs candidate detection only when the user clicks it.
+- Mapped active compression settings back to canonical ToF/Energy axes when
+  the displayed histogram is transposed, then passed the generated counts and
+  edges into the existing theory-guided detector.
+- Connected successful results to the transient candidate overlay and included
+  the proposal count in its toggle. A no-candidate result clears old proposals
+  and reports that no selection was created or saved.
+- Kept the complete suggestion path outside `Measurement.selector`; this work
+  adds no automatic selection-creation or persistence call.
+
+Verification:
+
+- `python -m unittest tests.unit.test_tofe_candidate`
+  `tests.unit.test_tofe_overlay tests.unit.test_tofe_theory`
+  `tests.unit.test_tofe_stopping tests.unit.test_tofe_report`:
+  **50 tests passed**.
+- Added tests for histogram orientation, compression-derived dimensions,
+  maximum-bin capping, constant axes, invalid raw events, and a deterministic
+  end-to-end path from noisy raw events to a high-confidence banana proposal.
+- `python -m compileall -q modules/tofe_candidate.py`
+  `tests/unit/test_tofe_candidate.py`
+  `widgets/matplotlib/measurement/tofe_histogram.py`: **passed**.
+- `git diff --check`: **passed**.
+
+Failure / limitation:
+
+- An auxiliary parity script that imported Potku's broader
+  `modules.math_functions` could not run because `shapely` is not installed in
+  this environment. The visible bin-count rule was reproduced in the focused,
+  dependency-free helper and is covered by unit tests.
+- PyQt5 is also unavailable, so the `Suggest` button and informational dialog
+  compile but could not be exercised in a live Potku window.
+- Default confidence/search parameters remain uncalibrated on real ToF-ERD
+  measurements. The end-to-end verification uses deterministic synthetic
+  banana events plus uniform background.
+- Proposals remain transient and non-editable. There is still no Accept path,
+  so automatic output cannot become or save a selection.
+
+Next:
+
+1. Add a Qt-independent proposal-state controller supporting pending,
+   rejected, editing, and accepted transitions while retaining polygon edits
+   outside `Measurement.selector`.
+2. Expose per-proposal `Accept`, `Edit`, and `Reject` GUI controls. Reject must
+   remove only the transient proposal; Edit must not autosave.
+3. Implement the explicit Accept adapter against Potku's `Selection` API with
+   element confirmation and tests proving no selector mutation occurs before
+   that action.

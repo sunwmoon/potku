@@ -49,6 +49,56 @@ class BananaCandidate:
     theory_adherence: float
 
 
+@dataclass(frozen=True)
+class CandidateHistogram:
+    """Canonical histogram grid with Energy rows and ToF columns."""
+
+    counts: np.ndarray
+    tof_edges: np.ndarray
+    energy_edges: np.ndarray
+
+
+def build_candidate_histogram(
+        tof_channels, energy_channels, tof_compression, energy_compression,
+        max_bin_count=10000) -> CandidateHistogram:
+    """Bin raw measurement events for theory-guided candidate detection.
+
+    Potku stores events as ``(ToF channel, Energy channel)`` pairs, whereas
+    image arrays use row-major ``(Energy bin, ToF bin)`` order. This function
+    makes that orientation explicit and applies the same span/compression bin
+    count rule used by the histogram widget.
+    """
+    tof = _validated_events(tof_channels, "ToF")
+    energy = _validated_events(energy_channels, "Energy")
+    if tof.shape != energy.shape:
+        raise ValueError("ToF and Energy event arrays must have equal length")
+    tof_compression = _positive_finite(
+        tof_compression, "ToF compression"
+    )
+    energy_compression = _positive_finite(
+        energy_compression, "Energy compression"
+    )
+    if not isinstance(max_bin_count, (int, np.integer)) or max_bin_count < 1:
+        raise ValueError("Maximum bin count must be a positive integer")
+
+    tof_bin_count = _compressed_bin_count(
+        tof, tof_compression, max_bin_count
+    )
+    energy_bin_count = _compressed_bin_count(
+        energy, energy_compression, max_bin_count
+    )
+    counts, energy_edges, tof_edges = np.histogram2d(
+        energy,
+        tof,
+        bins=(energy_bin_count, tof_bin_count),
+    )
+    return CandidateHistogram(
+        counts=counts,
+        tof_edges=tof_edges,
+        energy_edges=energy_edges,
+    )
+
+
 def propose_banana_candidates(
         histogram, x_edges, y_edges, loci: Iterable,
         settings=CandidateSearchSettings()) -> Tuple[BananaCandidate, ...]:
@@ -70,6 +120,27 @@ def propose_banana_candidates(
         if candidate is not None:
             candidates.append(candidate)
     return tuple(candidates)
+
+
+def _validated_events(values, axis):
+    values = np.asarray(values, dtype=float)
+    if values.ndim != 1 or values.size == 0:
+        raise ValueError(f"{axis} events must be a non-empty 1D array")
+    if not np.all(np.isfinite(values)):
+        raise ValueError(f"{axis} events must be finite")
+    return values
+
+
+def _positive_finite(value, description):
+    value = float(value)
+    if not np.isfinite(value) or value <= 0:
+        raise ValueError(f"{description} must be finite and positive")
+    return value
+
+
+def _compressed_bin_count(values, compression, max_bin_count):
+    span = float(np.max(values) - np.min(values))
+    return min(max(int(span / compression), 1), max_bin_count)
 
 
 def _propose_for_locus(
