@@ -46,6 +46,53 @@ class TestTofeOverlay(unittest.TestCase):
     def test_empty_overlay_creates_no_artists(self):
         self.assertEqual(draw_theory_loci(self.axes, []), ())
 
+    def test_draws_two_dimensional_detector_resolution_band(self):
+        locus = ChannelLocus(
+            label="16O",
+            tof_channel=np.array([1200.0, 1050.0, 900.0]),
+            energy_channel=np.array([300.0, 480.0, 700.0]),
+            maximum_recoil_energy_mev=7.0,
+            tof_resolution_fwhm_channel=10.0,
+            energy_resolution_fwhm_channel=20.0,
+        )
+
+        line, annotation, band = draw_theory_loci(self.axes, [locus])
+
+        self.assertEqual(annotation.get_text(), "16O")
+        self.assertEqual(band.get_zorder(), 3)
+        self.assertLess(band.get_alpha(), line.get_alpha())
+        self.assertEqual(len(band.get_xy()), 7)
+
+    def test_transposed_resolution_band_swaps_widths(self):
+        locus = ChannelLocus(
+            label="16O",
+            tof_channel=np.array([1200.0, 1050.0, 900.0]),
+            energy_channel=np.array([300.0, 480.0, 700.0]),
+            maximum_recoil_energy_mev=7.0,
+            tof_resolution_fwhm_channel=10.0,
+            energy_resolution_fwhm_channel=20.0,
+        )
+
+        normal_band = draw_theory_loci(self.axes, [locus])[2]
+        normal_vertices = normal_band.get_xy()
+        self.axes.clear()
+        transposed_band = draw_theory_loci(
+            self.axes, [locus], transposed=True
+        )[2]
+        transposed_vertices = transposed_band.get_xy()
+
+        normal_swapped = normal_vertices[:-1, ::-1]
+        transposed_open = transposed_vertices[:-1]
+        normal_swapped = normal_swapped[
+            np.lexsort((normal_swapped[:, 1], normal_swapped[:, 0]))
+        ]
+        transposed_open = transposed_open[
+            np.lexsort((transposed_open[:, 1], transposed_open[:, 0]))
+        ]
+        np.testing.assert_allclose(
+            normal_swapped, transposed_open
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

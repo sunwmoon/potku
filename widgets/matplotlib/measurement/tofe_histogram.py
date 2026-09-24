@@ -466,7 +466,8 @@ class MatplotlibHistogramWidget(MatplotlibWidget):
         self.theoryOverlayButton.setEnabled(False)
         self.theoryOverlayButton.clicked.connect(self.on_draw)
         self.theoryOverlayButton.setToolTip(
-            "Show theoretical element positions (not saved as selections)"
+            "Show theoretical element positions and detector-resolution "
+            "bands (not saved as selections)"
         )
         self.mpl_toolbar.addWidget(self.theoryOverlayButton)
 

@@ -151,3 +151,51 @@ Next:
    or recalculate loci when measurement settings change.
 3. Add detector-resolution bands around the center loci before using the
    theory distance as an automatic banana-candidate confidence feature.
+
+## 2026-09-24 17:06 KST - Detector-resolution bands
+
+Implemented:
+
+- Read Potku's existing detector time resolution (`timeres`, ps FWHM) and
+  energy resolution (`energyres`, keV FWHM) while calculating each channel
+  locus, and converted both values through the active ToF and runtime energy
+  calibrations.
+- Extended `ChannelLocus` with optional channel-space FWHM values without
+  changing detector files or requiring them from older callers.
+- Added a translucent two-dimensional resolution ribbon around each dashed
+  center locus. The ribbon is normal to the curve in resolution-normalized
+  coordinates, so both time and energy resolution contribute.
+- Preserved the ribbon geometry when the histogram axes are transposed.
+- Kept the center line and band as non-persistent Matplotlib artists; neither
+  is added to `Measurement.selector` or saved as a selection.
+
+Verification:
+
+- `python -m unittest tests.unit.test_tofe_theory tests.unit.test_tofe_overlay`:
+  **17 tests passed**.
+- `python -m compileall -q` for the changed calculation, overlay, histogram,
+  and test files: **passed**.
+- `git diff --check`: **passed**.
+
+Failure / limitation:
+
+- The first transpose-band assertion failed because it compared polygon
+  traversal direction, even though the normal and transposed polygons had the
+  same vertices. The test now compares direction-independent vertex sets and
+  passes.
+- The band currently represents detector FWHM only. It does not yet include
+  target/foil energy-loss straggling, angular spread, or depth-dependent
+  broadening, and must not yet be interpreted as an automatic-selection
+  confidence interval.
+- PyQt5 and initialized JIBAL data are still unavailable in this environment,
+  so interactive rendering with a concrete Potku measurement remains pending.
+
+Next:
+
+1. Initialize/build JIBAL and verify the predicted lines and resolution bands
+   against a concrete measurement and histogram screenshot.
+2. Add timing-foil energy loss to separate the ToF-flight energy from the
+   energy-detector value before treating the theoretical distance as a
+   candidate confidence feature.
+3. Preserve/invalidate runtime theory settings when measurement or detector
+   parameters change.

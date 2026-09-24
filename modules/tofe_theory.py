@@ -58,6 +58,8 @@ class ChannelLocus:
     tof_channel: np.ndarray
     energy_channel: np.ndarray
     maximum_recoil_energy_mev: float
+    tof_resolution_fwhm_channel: float = None
+    energy_resolution_fwhm_channel: float = None
 
 
 @dataclass(frozen=True)
@@ -199,6 +201,18 @@ def calculate_loci_for_measurement(
         _number(detector.tof_slope, "ToF calibration slope"),
         _number(detector.tof_offset, "ToF calibration offset"),
     )
+    tof_resolution_fwhm_channel = _resolution_in_channels(
+        getattr(detector, "timeres", None),
+        1e-12,
+        tof_calibration,
+        "Time resolution",
+    )
+    energy_resolution_fwhm_channel = _resolution_in_channels(
+        getattr(detector, "energyres", None),
+        1e-3,
+        energy_calibration,
+        "Energy resolution",
+    )
 
     loci = []
     for element in recoil_elements:
@@ -228,6 +242,12 @@ def calculate_loci_for_measurement(
             energy_channel=energy_channel,
             maximum_recoil_energy_mev=(
                 ideal_locus.maximum_recoil_energy_mev
+            ),
+            tof_resolution_fwhm_channel=(
+                tof_resolution_fwhm_channel
+            ),
+            energy_resolution_fwhm_channel=(
+                energy_resolution_fwhm_channel
             ),
         ))
 
@@ -268,6 +288,17 @@ def _positive_number(value, description):
     if number <= 0:
         raise ValueError(f"{description} must be positive")
     return number
+
+
+def _resolution_in_channels(value, unit_to_physical, calibration,
+                            description):
+    """Convert an optional detector FWHM to an absolute channel width."""
+    if value is None:
+        return None
+    resolution = _number(value, description)
+    if resolution < 0:
+        raise ValueError(f"{description} cannot be negative")
+    return abs(resolution * unit_to_physical / calibration.slope)
 
 
 def _number(value, description):

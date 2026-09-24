@@ -77,6 +77,12 @@ class TestTofeTheory(unittest.TestCase):
         )
         np.testing.assert_allclose(loci[1].tof_channel, expected_tof)
         np.testing.assert_allclose(loci[1].energy_channel, expected_energy)
+        self.assertAlmostEqual(
+            loci[1].tof_resolution_fwhm_channel, 5.0
+        )
+        self.assertAlmostEqual(
+            loci[1].energy_resolution_fwhm_channel, 2.5
+        )
 
     def test_measurement_adapter_rejects_unknown_recoil_mass(self):
         measurement = SimpleNamespace(
@@ -113,6 +119,23 @@ class TestTofeTheory(unittest.TestCase):
     def test_prediction_settings_reject_zero_energy_slope(self):
         with self.assertRaises(ValueError):
             TheoryPredictionSettings.from_text("1H", 0.0)
+
+    def test_measurement_adapter_rejects_negative_resolution(self):
+        measurement = SimpleNamespace(
+            run=SimpleNamespace(
+                beam=SimpleNamespace(
+                    ion=FakeElement("127I", 126.904_473), energy=30
+                )
+            ),
+            detector=FakeDetector(timeres=-1),
+        )
+
+        with self.assertRaisesRegex(ValueError, "cannot be negative"):
+            calculate_loci_for_measurement(
+                measurement,
+                [FakeElement("16O", 15.994_915)],
+                LinearCalibration(0.01),
+            )
 
     def test_calculate_loci_from_settings_uses_element_factory(self):
         beam_ion = FakeElement("127I", 126.904_473)
@@ -159,11 +182,14 @@ class FakeDetector:
     """Minimal implementation of settings read from Potku's Detector."""
 
     def __init__(self, detector_theta=41, tof_slope=5.8e-11,
-                 tof_offset=-1e-9, tof_length=0.623):
+                 tof_offset=-1e-9, tof_length=0.623, timeres=500,
+                 energyres=25):
         self.detector_theta = detector_theta
         self.tof_slope = tof_slope
         self.tof_offset = tof_offset
         self.tof_length = tof_length
+        self.timeres = timeres
+        self.energyres = energyres
 
     def calculate_tof_length(self):
         return self.tof_length
