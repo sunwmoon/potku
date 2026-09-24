@@ -595,3 +595,99 @@ Next:
 3. Implement the explicit Accept adapter against Potku's `Selection` API with
    element confirmation and tests proving no selector mutation occurs before
    that action.
+## 2026-09-25 00:40 KST - Synthetic KIST geometry and auto-selection demo
+
+Implemented:
+
+- Added a parameterized synthetic ToF-ERD geometry preset for a 1.9 MV tandem
+  with a 35Cl5+ beam. The nominal output energy is calculated as 11.4 MeV from
+  `(q + 1) * terminal voltage`; injection energy remains a separate parameter.
+- Defined recoil/detector angle as 30 degrees, incidence and exit angles as 75
+  degrees from the surface normal, and flight length as a configurable 0.5 m.
+  The preset checks that the coplanar geometry closes at 30 degrees.
+- Added ideal channel-space loci for 1H, 12C, 16O, and 28Si, together with
+  configurable ToF/Energy calibration and detector FWHM.
+- Added deterministic synthetic event generation with detector broadening,
+  element-specific calibration/stopping offsets, and uniform background noise.
+- Added a runnable example that bins the raw events, detects each ridge, draws
+  automatic closed polygons, and exports PNG, NPZ, and TSV evidence.
+- Added `USER_ACTIONS.md` listing the real measurement, calibration, geometry,
+  and selection inputs required from the user.
+
+Verification:
+
+- `python -m unittest tests.unit.test_tofe_synthetic`
+  `tests.unit.test_tofe_candidate tests.unit.test_tofe_theory`
+  `tests.unit.test_tofe_stopping tests.unit.test_tofe_report`
+  `tests.unit.test_tofe_overlay`: **55 tests passed**.
+- The standalone demo generated **25,000 events** and detected **4/4** recoil
+  candidates: 1H confidence 0.802, 12C 0.749, 16O 0.692, and 28Si 0.686.
+- `python -m compileall` for the new module, example, and test plus
+  `git diff --check`: **passed**.
+
+Limitation:
+
+- No real KIST ToF-ERD event or accepted selection file is present. The current
+  thresholds and confidence scores are validated only on synthetic data.
+- Incidence and exit angles are recorded and checked but are not yet applied
+  to sample stopping. The present ideal locus spans an energy fraction; a
+  target-layer stopping model will use these path angles in a later unit.
+
+Next:
+
+1. Add acceptance metrics against synthetic truth labels and failure cases
+   with overlapping or missing bananas.
+2. Add Accept/Edit/Reject state and a controlled adapter into Potku selections.
+3. Replace the synthetic calibration with one real KIST measurement, then
+   quantify theory offset and polygon overlap before ML training.
+
+## 2026-09-25 01:05 KST - Safe candidate review state
+
+Implemented:
+
+- Added a Qt-independent `CandidateReviewSession` for explicit `pending`,
+  `editing`, `rejected`, and `accepted` proposal states.
+- Assigned stable candidate IDs, including duplicate isotope labels, while
+  keeping input proposal arrays copied and read-only inside the review state.
+- Added begin, replace, finish, and cancel edit transitions. Polygon updates
+  require a finite, closed shape with at least three distinct vertices.
+- Added reject handling that only changes transient review state.
+- Added an explicit acceptance callback boundary. No transition except
+  `accept()` receives or invokes a selector conversion callback.
+- Made acceptance transactional at the state level: if the future Potku
+  selection adapter raises an exception, the candidate remains pending.
+
+Verification:
+
+- `python -m unittest tests.unit.test_tofe_candidate_review`
+  `tests.unit.test_tofe_candidate tests.unit.test_tofe_overlay`
+  `tests.unit.test_tofe_synthetic tests.unit.test_tofe_theory`
+  `tests.unit.test_tofe_stopping tests.unit.test_tofe_report`:
+  **63 tests passed**.
+- The deterministic synthetic demo regenerated **25,000 events** and detected
+  **4/4** candidates. Confidence remained 0.802 for 1H, 0.749 for 12C, 0.692
+  for 16O, and 0.686 for 28Si.
+- `python -m compileall -q` for the review module and test: **passed**.
+- `git diff --check`: **passed**.
+
+Failure / limitation:
+
+- No test failed in the completed work unit.
+- PyQt5 remains unavailable, so review buttons and interactive vertex dragging
+  were not added or exercised in a live Potku window.
+- The acceptance callback is a safety boundary only. The concrete adapter that
+  converts an approved polygon and confirmed element into Potku's `Selection`
+  is intentionally deferred until its GUI confirmation flow can be tested.
+- Real KIST events and accepted selections remain unavailable. Confidence
+  values are still synthetic heuristic scores rather than calibrated
+  probabilities.
+
+Next:
+
+1. Connect the review session to a proposal list with per-candidate
+   `Accept`, `Edit`, and `Reject` controls.
+2. Add the explicit Potku `Selection` adapter behind `Accept`, with isotope
+   confirmation and tests proving no selector or selection file mutation
+   before that action.
+3. Add synthetic truth-overlap metrics and overlapping or missing banana
+   cases before tuning confidence thresholds.
