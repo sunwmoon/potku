@@ -414,3 +414,64 @@ Next:
 3. Start the Qt-independent banana-candidate stage: detect histogram ridges
    near each theory band and return non-persistent polygon/confidence proposals
    for later Accept/Edit/Reject integration.
+
+## 2026-09-24 22:03 KST - Theory-guided banana candidate core
+
+Implemented:
+
+- Added a Qt-independent candidate detector that accepts a 2D ToF-E histogram
+  in `(energy bin, ToF bin)` order plus one or more theoretical channel loci.
+- Sampled each theory locus and searched along its local normal direction in
+  detector-resolution units. Motion along the banana tangent is penalized so
+  adjacent theory samples do not collapse onto the same high-count bin, while
+  a measured banana shifted normal to the theory curve can still be found.
+- Added local background and Poisson-like peak thresholding. Flat histograms
+  now return no proposal rather than producing a polygon from noise alone.
+- Added `BananaCandidate`, containing an editable closed polygon, detected
+  ridge, confidence, coverage, contrast, and theory-adherence diagnostics.
+  Confidence combines signal coverage, local contrast, and normalized distance
+  from the physics prediction.
+- Added bin-width fallback search scales for old detector settings that do not
+  provide ToF or Energy resolution.
+- Kept the detector completely separate from `Measurement.selector`; it only
+  returns NumPy data and cannot create or save a Potku selection.
+
+Verification:
+
+- `python -m unittest tests.unit.test_tofe_candidate`
+  `tests.unit.test_tofe_theory tests.unit.test_tofe_overlay`
+  `tests.unit.test_tofe_stopping tests.unit.test_tofe_report`:
+  **41 tests passed**.
+- Synthetic tests cover an aligned banana, a measured banana shifted from the
+  theory locus, lower confidence for that shift, a flat-background rejection,
+  missing-resolution fallback, closed polygons, and invalid histogram shapes.
+- `python -m compileall -q modules/tofe_candidate.py`
+  `tests/unit/test_tofe_candidate.py`: **passed**.
+- `git diff --check`: **passed**.
+
+Failure / limitation:
+
+- The first synthetic test run returned no candidates because searching the
+  full two-dimensional window let neighboring theory samples choose duplicate
+  ridge maxima, producing a degenerate polygon. The search was changed to use
+  local tangent/normal coordinates with a tangent-distance penalty; all tests
+  then passed.
+- Confidence is currently a transparent heuristic, not a calibrated
+  probability. Its thresholds need tuning against real Potku spectra with
+  manually accepted and rejected selections.
+- Only deterministic synthetic histograms were available. Overlapping
+  bananas, detector artifacts, sparse tails, and strongly varying background
+  have not yet been validated.
+- This work produces proposal data only. It deliberately does not draw a
+  proposal or expose Accept/Edit/Reject controls yet, so there is still no path
+  by which an automatic result can be saved.
+
+Next:
+
+1. Draw candidate polygons/ridges as transient histogram artists with label
+   and confidence, without adding them to `Measurement.selector`.
+2. Add proposal state and `Accept`, `Edit`, and `Reject` controls; only an
+   explicit Accept action may convert a proposal into a Potku selection.
+3. Build real histogram arrays from the widget's raw measurement data and
+   compression settings, then tune detection thresholds against representative
+   separated, overlapping, weak, and background-dominated bananas.
