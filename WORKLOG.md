@@ -86,6 +86,10 @@ Verification:
 Failure / limitation:
 
 - No test failed in this work unit.
+- Direct command-line `git push` was unavailable because this execution
+  environment has no interactive HTTPS credentials. The same tested tree was
+  successfully committed to `sunwmoon/potku` through the connected GitHub API
+  and the `feature/potku-ai-theory` branch was advanced without force.
 - The overlay accepts already-calculated channel loci but is not yet populated
   automatically at widget startup. Potku still lacks a persisted
   energy-channel calibration, so silently assuming a slope/offset would put
