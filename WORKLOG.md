@@ -475,3 +475,62 @@ Next:
 3. Build real histogram arrays from the widget's raw measurement data and
    compression settings, then tune detection thresholds against representative
    separated, overlapping, weak, and background-dominated bananas.
+
+## 2026-09-24 23:19 KST - Transient candidate overlay
+
+Implemented:
+
+- Added a Qt-independent Matplotlib renderer for `BananaCandidate` objects.
+  It draws the proposed polygon fill, dotted boundary, detected ridge, element
+  label, confidence percentage, and an explicit `proposed` status.
+- Used a fixed amber proposal color and separate line styles so an automatic
+  suggestion is visually distinct from accepted Potku selections and from the
+  theoretical center-line overlay.
+- Added normal and transposed-axis rendering for both polygon and ridge
+  coordinates. The confidence annotation follows the correct ridge endpoint
+  after the axes are swapped.
+- Added a disabled-by-default `Candidates` histogram-toolbar toggle plus
+  `set_candidate_proposals()` and `clear_candidate_proposals()` APIs. These
+  methods retain candidate data only in the histogram widget and never call
+  `Measurement.selector`.
+- Automatically clear stale candidate proposals whenever the theory loci are
+  recalculated, replaced, or removed.
+- Added validation for malformed/non-finite proposal coordinates and
+  confidence values outside `[0, 1]` before rendering.
+
+Verification:
+
+- `python -m unittest tests.unit.test_tofe_overlay`
+  `tests.unit.test_tofe_candidate tests.unit.test_tofe_theory`
+  `tests.unit.test_tofe_stopping tests.unit.test_tofe_report`:
+  **46 tests passed**.
+- Tests cover candidate styling, confidence label, polygon/ridge coordinates,
+  axis transposition, empty overlays, and invalid coordinates/confidence.
+- `python -m compileall -q modules/tofe_overlay.py`
+  `tests/unit/test_tofe_overlay.py`
+  `widgets/matplotlib/measurement/tofe_histogram.py`: **passed**.
+- `git diff --check`: **passed**.
+
+Failure / limitation:
+
+- No test failed in this completed work unit.
+- PyQt5 is still unavailable in the execution environment. The Matplotlib
+  artists were verified with the non-interactive Agg backend and the widget
+  source compiles, but the new toolbar toggle could not be clicked in a live
+  Potku window.
+- Candidate generation is not yet invoked from the histogram widget; this
+  change provides the safe transient display boundary and lifecycle only.
+- The displayed polygons are not yet interactively editable and there are no
+  Accept/Edit/Reject controls. Consequently, proposals still cannot enter the
+  selector or be persisted.
+
+Next:
+
+1. Build a `(counts, ToF edges, Energy edges)` histogram bridge from the raw
+   measurement data and the active compression settings, then invoke the
+   candidate detector from an explicit user action.
+2. Add per-proposal selection state and `Accept`, `Edit`, and `Reject`
+   controls. Only `Accept` may create a Potku selection; Reject must only clear
+   transient data.
+3. Add draggable proposal vertices for Edit while keeping changes outside
+   `Measurement.selector` until the user confirms acceptance.

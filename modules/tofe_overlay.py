@@ -5,6 +5,9 @@ from typing import Iterable
 import numpy as np
 
 
+PROPOSAL_COLOR = "#ff9f1c"
+
+
 def draw_theory_loci(axes, loci: Iterable, transposed=False):
     """Draw labeled theory loci without creating Potku selections.
 
@@ -70,6 +73,72 @@ def draw_theory_loci(axes, loci: Iterable, transposed=False):
             )
             artists.append(band)
 
+    return tuple(artists)
+
+
+def draw_candidate_proposals(axes, candidates: Iterable, transposed=False):
+    """Draw transient banana proposals and their confidence values.
+
+    Candidate polygons are visually distinct from accepted Potku selections:
+    they use a translucent fill, dotted outline, dash-dot ridge, and an
+    explicit ``proposed`` label. This helper only creates Matplotlib artists
+    and has no access to ``Measurement.selector`` or selection persistence.
+    """
+    artists = []
+    for candidate in candidates:
+        polygon = np.asarray(candidate.polygon, dtype=float)
+        ridge = np.asarray(candidate.ridge, dtype=float)
+        confidence = float(candidate.confidence)
+        if polygon.ndim != 2 or polygon.shape[1] != 2:
+            raise ValueError("Candidate polygon must contain (x, y) pairs")
+        if ridge.ndim != 2 or ridge.shape[1] != 2 or ridge.shape[0] == 0:
+            raise ValueError("Candidate ridge must contain (x, y) pairs")
+        if not np.all(np.isfinite(polygon)) or not np.all(np.isfinite(ridge)):
+            raise ValueError("Candidate coordinates must be finite")
+        if not np.isfinite(confidence) or not 0 <= confidence <= 1:
+            raise ValueError("Candidate confidence must be in [0, 1]")
+
+        if transposed:
+            polygon = polygon[:, ::-1]
+            ridge = ridge[:, ::-1]
+
+        outline, = axes.plot(
+            polygon[:, 0],
+            polygon[:, 1],
+            color=PROPOSAL_COLOR,
+            linestyle=":",
+            linewidth=1.8,
+            alpha=0.95,
+            zorder=6,
+        )
+        fill, = axes.fill(
+            polygon[:, 0],
+            polygon[:, 1],
+            color=outline.get_color(),
+            alpha=0.18,
+            linewidth=0,
+            zorder=5,
+        )
+        ridge_line, = axes.plot(
+            ridge[:, 0],
+            ridge[:, 1],
+            color=outline.get_color(),
+            linestyle="-.",
+            linewidth=1.2,
+            alpha=0.85,
+            zorder=7,
+        )
+        annotation = axes.annotate(
+            f"{candidate.label} {confidence:.0%} proposed",
+            xy=tuple(ridge[-1]),
+            xytext=(5, -10),
+            textcoords="offset points",
+            color=outline.get_color(),
+            fontsize=8,
+            fontweight="bold",
+            zorder=8,
+        )
+        artists.extend((fill, outline, ridge_line, annotation))
     return tuple(artists)
 
 

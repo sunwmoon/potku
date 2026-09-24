@@ -40,6 +40,7 @@ import widgets.gui_utils as gutils
 from modules.enums import ToFEColorScheme
 from modules.element import Element
 from modules.measurement import Measurement
+from modules.tofe_overlay import draw_candidate_proposals
 from modules.tofe_overlay import draw_theory_loci
 from modules.tofe_theory import calculate_loci_from_settings
 from modules.tofe_stopping import build_detector_carbon_stopping
@@ -174,6 +175,7 @@ class MatplotlibHistogramWidget(MatplotlibWidget):
         # Theory loci are visual suggestions only. They are deliberately kept
         # outside Measurement.selector so they cannot be auto-saved as cuts.
         self.__theory_loci = ()
+        self.__candidate_proposals = ()
 
         self.on_draw()
 
@@ -262,6 +264,13 @@ class MatplotlibHistogramWidget(MatplotlibWidget):
             draw_theory_loci(
                 self.axes,
                 self.__theory_loci,
+                transposed=self.transpose_axes,
+            )
+        if (self.candidateOverlayButton.isChecked() and
+                self.__candidate_proposals):
+            draw_candidate_proposals(
+                self.axes,
+                self.__candidate_proposals,
                 transposed=self.transpose_axes,
             )
         
@@ -482,6 +491,16 @@ class MatplotlibHistogramWidget(MatplotlibWidget):
         )
         self.mpl_toolbar.addWidget(self.theoryReportButton)
 
+        self.candidateOverlayButton = QtWidgets.QToolButton(self)
+        self.candidateOverlayButton.setText("Candidates")
+        self.candidateOverlayButton.setCheckable(True)
+        self.candidateOverlayButton.setEnabled(False)
+        self.candidateOverlayButton.clicked.connect(self.on_draw)
+        self.candidateOverlayButton.setToolTip(
+            "Show transient automatic polygon proposals (not selections)"
+        )
+        self.mpl_toolbar.addWidget(self.candidateOverlayButton)
+
     def configure_theory_overlay(self):
         """Calculate loci from current measurement and runtime settings."""
         dialog = TheoryPredictionDialog(self)
@@ -504,6 +523,7 @@ class MatplotlibHistogramWidget(MatplotlibWidget):
             return
 
         self.__theory_loci = tuple(loci)
+        self._clear_candidate_proposals(redraw=False)
         self.theoryOverlayButton.setEnabled(True)
         self.theoryOverlayButton.setChecked(True)
         self.theoryReportButton.setEnabled(True)
@@ -554,6 +574,7 @@ class MatplotlibHistogramWidget(MatplotlibWidget):
         iterable clears and disables the overlay.
         """
         self.__theory_loci = tuple(loci)
+        self._clear_candidate_proposals(redraw=False)
         self._update_theory_mode_display()
         has_loci = bool(self.__theory_loci)
         self.theoryOverlayButton.setEnabled(has_loci)
@@ -565,6 +586,25 @@ class MatplotlibHistogramWidget(MatplotlibWidget):
     def clear_theory_loci(self):
         """Remove all theoretical overlay data without touching selections."""
         self.set_theory_loci(())
+
+    def set_candidate_proposals(self, candidates):
+        """Display non-persistent proposals without creating selections."""
+        self.__candidate_proposals = tuple(candidates)
+        has_candidates = bool(self.__candidate_proposals)
+        self.candidateOverlayButton.setEnabled(has_candidates)
+        self.candidateOverlayButton.setChecked(has_candidates)
+        self.on_draw()
+
+    def clear_candidate_proposals(self):
+        """Remove automatic suggestions without touching selections."""
+        self._clear_candidate_proposals(redraw=True)
+
+    def _clear_candidate_proposals(self, redraw):
+        self.__candidate_proposals = ()
+        self.candidateOverlayButton.setEnabled(False)
+        self.candidateOverlayButton.setChecked(False)
+        if redraw:
+            self.on_draw()
 
     def on_click(self, event):
         """On click event above graph.
