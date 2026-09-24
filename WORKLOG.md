@@ -361,3 +361,53 @@ Next:
    O, and Si recoil-energy ranges.
 3. Add target/dead-layer transport interfaces before using theory distance as
    an automatic banana-candidate confidence feature.
+
+## 2026-09-24 21:06 KST - Theory overlay report and TSV export
+
+Implemented:
+
+- Added a Qt-independent report builder for every displayed theoretical locus.
+  Each row contains the low-energy and surface ToF/Energy channel endpoints,
+  maximum recoil energy, detector-resolution FWHM values, correction mode,
+  and any per-element ideal-fallback reason.
+- Added deterministic TSV serialization with safe quoting for multiline or
+  tab-containing fallback messages and blank fields for unavailable detector
+  resolutions.
+- Added a `Report…` histogram-toolbar action that is enabled only while
+  transient theory loci exist. The dialog supports inspection, clipboard
+  copy, and an explicit user-selected TSV export path.
+- Kept the report completely separate from `Measurement.selector`; opening,
+  copying, or exporting a report never creates or accepts a selection.
+- Added validation for empty, non-1D, mismatched, and non-finite channel data
+  so a malformed prediction cannot silently produce a misleading report.
+
+Verification:
+
+- `python -m unittest tests.unit.test_tofe_theory`
+  `tests.unit.test_tofe_overlay tests.unit.test_tofe_stopping`
+  `tests.unit.test_tofe_report`: **36 tests passed**.
+- `python -m compileall -q` for all theory, overlay, stopping, report, dialog,
+  histogram, and report-test files: **passed**.
+- `git diff --check`: **passed**.
+
+Failure / limitation:
+
+- No unit test failed in the completed work unit.
+- PyQt5 remains unavailable in this execution environment, so the new report
+  dialog compiles but could not be opened interactively. Report generation,
+  endpoint validation, fallback preservation, and TSV quoting are covered by
+  Qt-independent tests.
+- The exported surface Energy channel includes the implemented carbon
+  timing-foil correction when available, but still excludes target loss and
+  the energy-detector entrance dead layer. The report labels the calculation
+  mode and fallback, but it is not yet a complete transport calculation.
+
+Next:
+
+1. Open the report against a concrete measurement with PyQt5/JIBAL available
+   and compare its channel endpoints with the visible histogram.
+2. Add target/dead-layer transport inputs or explicitly report them as omitted
+   before treating distance from the theory locus as a confidence feature.
+3. Start the Qt-independent banana-candidate stage: detect histogram ridges
+   near each theory band and return non-persistent polygon/confidence proposals
+   for later Accept/Edit/Reject integration.

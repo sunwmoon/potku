@@ -50,6 +50,7 @@ from dialogs.measurement.element_losses import ElementLossesWidget
 from dialogs.measurement.selection import SelectionSettingsDialog
 from dialogs.measurement.import_selection import SelectionDialog
 from dialogs.measurement.theory_prediction import TheoryPredictionDialog
+from dialogs.measurement.theory_report import TheoryReportDialog
 import dialogs.file_dialogs as fdialogs
 
 from matplotlib import cm
@@ -472,6 +473,15 @@ class MatplotlibHistogramWidget(MatplotlibWidget):
         )
         self.mpl_toolbar.addWidget(self.theoryOverlayButton)
 
+        self.theoryReportButton = QtWidgets.QToolButton(self)
+        self.theoryReportButton.setText("Report…")
+        self.theoryReportButton.setEnabled(False)
+        self.theoryReportButton.clicked.connect(self.show_theory_report)
+        self.theoryReportButton.setToolTip(
+            "Inspect or export theoretical endpoints and fallback reasons"
+        )
+        self.mpl_toolbar.addWidget(self.theoryReportButton)
+
     def configure_theory_overlay(self):
         """Calculate loci from current measurement and runtime settings."""
         dialog = TheoryPredictionDialog(self)
@@ -496,8 +506,20 @@ class MatplotlibHistogramWidget(MatplotlibWidget):
         self.__theory_loci = tuple(loci)
         self.theoryOverlayButton.setEnabled(True)
         self.theoryOverlayButton.setChecked(True)
+        self.theoryReportButton.setEnabled(True)
         self._update_theory_mode_display()
         self.on_draw()
+
+    def show_theory_report(self):
+        """Inspect/export transient loci without saving selections."""
+        if not self.__theory_loci:
+            return
+        default_path = Path(self.measurement.directory) / (
+            f"{self.measurement.name}_theory_overlay.tsv"
+        )
+        TheoryReportDialog(
+            self.__theory_loci, default_path, self
+        ).exec_()
 
     def _update_theory_mode_display(self):
         """Expose correction/fallback state without altering element labels."""
@@ -535,6 +557,7 @@ class MatplotlibHistogramWidget(MatplotlibWidget):
         self._update_theory_mode_display()
         has_loci = bool(self.__theory_loci)
         self.theoryOverlayButton.setEnabled(has_loci)
+        self.theoryReportButton.setEnabled(has_loci)
         if not has_loci:
             self.theoryOverlayButton.setChecked(False)
         self.on_draw()
