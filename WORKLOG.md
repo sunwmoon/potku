@@ -285,6 +285,9 @@ Failure / limitation:
   `external/share/jibal/masses.dat` is absent. Initializing the JIBAL submodule
   was attempted, but its GitHub clone produced no progress in this restricted
   environment and was interrupted after about 90 seconds.
+- Standard HTTPS `git push` could not read GitHub credentials in the execution
+  shell. The tested files were instead published through the connected GitHub
+  API as a non-force, fast-forward commit on the same feature branch.
 - The interpolation error has not yet been quantified against real JIBAL
   output. The 24-point default is an implementation starting point, not a
   validated physics-accuracy setting.
