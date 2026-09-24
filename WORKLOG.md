@@ -748,3 +748,61 @@ Next:
    adapter only after the final Accept confirmation.
 3. Add synthetic truth-overlap metrics plus overlapping and missing-banana
    cases before moving to ML feature extraction.
+
+## 2026-09-25 07:10 KST - Candidate review dialog and GUI connection
+
+Implemented:
+
+- Added a Qt-independent review controller that exposes candidate label,
+  confidence, ridge coverage, status, and editable polygon coordinates.
+- Added a `Review…` action to the ToF-E histogram. It is enabled only while
+  transient candidate proposals exist and opens a table for reviewing each
+  candidate.
+- Added polygon editing as explicit ToF/Energy coordinate rows. Applying or
+  cancelling an edit changes only the transient candidate state; Reject also
+  removes only the proposal overlay.
+- Added explicit element/isotope confirmation and a final warning that Accept
+  will update the Potku selection file. Only that confirmed action calls the
+  transactional selection adapter.
+- Removed accepted and rejected proposals from the transient overlay after the
+  dialog closes, while leaving pending proposals available for later review.
+- Updated `USER_ACTIONS.md` to reflect that isotope confirmation and the final
+  save warning are now implemented.
+
+Verification:
+
+- `python -m unittest tests.unit.test_tofe_review_controller`
+  `tests.unit.test_tofe_selection_adapter tests.unit.test_tofe_candidate_review`
+  `tests.unit.test_tofe_candidate tests.unit.test_tofe_overlay`
+  `tests.unit.test_tofe_synthetic tests.unit.test_tofe_theory`
+  `tests.unit.test_tofe_stopping tests.unit.test_tofe_report`:
+  **77 tests passed**.
+- Controller tests prove Edit and Reject perform **0** selector updates and
+  create no file, while a confirmed Accept performs exactly **1** update.
+- `python -m compileall -q` for the controller, dialog, histogram integration,
+  and tests: **passed**.
+- `git diff --check`: **passed**.
+- The deterministic synthetic demo regenerated **25,000 events** and detected
+  **4/4** candidates: 1H confidence 0.802, 12C 0.749, 16O 0.692, and 28Si
+  0.686. The spectrum PNG, raw-event NPZ, and polygon TSV were refreshed.
+
+Failure / limitation:
+
+- No automated test failed in the completed implementation.
+- PyQt5 is not installed in this execution environment, so the new dialog and
+  toolbar action compile but could not be exercised interactively or captured
+  from a live Potku window.
+- Polygon editing currently uses numeric ToF/Energy rows rather than draggable
+  handles on the histogram. This preserves the approval boundary but is less
+  convenient than direct visual editing.
+- Real KIST events and accepted selections remain absent. Confidence values
+  and the review workflow are therefore verified on synthetic data only.
+
+Next:
+
+1. Add synthetic truth-overlap metrics and overlapping or missing-banana
+   scenarios to quantify polygon precision and recall before ML extraction.
+2. Add non-persistent drag handles for proposal vertices, then send the edited
+   polygon back through the same review controller.
+3. Exercise the dialog with PyQt5, JIBAL, and one real measurement once those
+   dependencies and data are available.

@@ -30,8 +30,8 @@ turn the result into a calibrated KIST workflow.
    the candidate confidence and minimum-event thresholds.
 8. Confirm whether accepted automatic selections should default to a specific
    isotope (for example, 16O) or to the natural element (O).  The synthetic
-   demonstration uses isotope-specific labels, and the planned Accept dialog
-   will require the element/isotope to be confirmed before saving.
+   demonstration uses isotope-specific labels.  The new Accept dialog requires
+   the element/isotope to be confirmed and shows a final warning before saving.
 
 No real measurement is currently present in this working copy.  Until these
 items arrive, confidence values measure performance on synthetic data and must

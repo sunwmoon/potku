@@ -54,6 +54,7 @@ from dialogs.measurement.selection import SelectionSettingsDialog
 from dialogs.measurement.import_selection import SelectionDialog
 from dialogs.measurement.theory_prediction import TheoryPredictionDialog
 from dialogs.measurement.theory_report import TheoryReportDialog
+from dialogs.measurement.candidate_review import CandidateReviewDialog
 import dialogs.file_dialogs as fdialogs
 
 from matplotlib import cm
@@ -514,6 +515,17 @@ class MatplotlibHistogramWidget(MatplotlibWidget):
         )
         self.mpl_toolbar.addWidget(self.candidateOverlayButton)
 
+        self.reviewCandidatesButton = QtWidgets.QToolButton(self)
+        self.reviewCandidatesButton.setText("Review…")
+        self.reviewCandidatesButton.setEnabled(False)
+        self.reviewCandidatesButton.clicked.connect(
+            self.review_candidate_proposals
+        )
+        self.reviewCandidatesButton.setToolTip(
+            "Review, edit, reject, or explicitly accept banana proposals"
+        )
+        self.mpl_toolbar.addWidget(self.reviewCandidatesButton)
+
     def configure_theory_overlay(self):
         """Calculate loci from current measurement and runtime settings."""
         dialog = TheoryPredictionDialog(self)
@@ -655,7 +667,20 @@ class MatplotlibHistogramWidget(MatplotlibWidget):
         )
         self.candidateOverlayButton.setEnabled(has_candidates)
         self.candidateOverlayButton.setChecked(has_candidates)
+        self.reviewCandidatesButton.setEnabled(has_candidates)
         self.on_draw()
+
+    def review_candidate_proposals(self):
+        """Open explicit review; only the dialog's Accept can save."""
+        if not self.__candidate_proposals:
+            return
+        dialog = CandidateReviewDialog(
+            self.__candidate_proposals, self.measurement.selector, self
+        )
+        dialog.exec_()
+        self.set_candidate_proposals(dialog.active_candidates)
+        if dialog.accepted_count:
+            self.__emit_selections_changed()
 
     def clear_candidate_proposals(self):
         """Remove automatic suggestions without touching selections."""
@@ -666,6 +691,7 @@ class MatplotlibHistogramWidget(MatplotlibWidget):
         self.candidateOverlayButton.setText("Candidates")
         self.candidateOverlayButton.setEnabled(False)
         self.candidateOverlayButton.setChecked(False)
+        self.reviewCandidatesButton.setEnabled(False)
         if redraw:
             self.on_draw()
 
