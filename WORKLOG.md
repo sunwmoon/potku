@@ -57,3 +57,47 @@ Next:
    before adding them to the persistent detector schema.
 3. Initialize/build JIBAL external components and add a concrete Potku object
    integration test.
+
+## 2026-09-24 15:07 KST - Non-persistent histogram overlay
+
+Implemented:
+
+- Added `draw_theory_loci()`, a Qt-independent Matplotlib helper that draws
+  dashed channel loci and direct isotope/element labels.
+- Added a `Theory` toggle to the ToF-E histogram toolbar. The button remains
+  disabled until calculated loci are supplied with `set_theory_loci()`.
+- Added normal and transposed-axis rendering. The surface-recoil endpoint and
+  its element label remain aligned after the histogram axes are swapped.
+- Kept overlay data in the histogram widget, outside
+  `Measurement.selector`; theoretical lines are never converted to or saved
+  as accepted selections.
+- Added `clear_theory_loci()` so a future settings dialog can remove stale
+  predictions when measurement parameters change.
+
+Verification:
+
+- `python -m unittest tests.unit.test_tofe_theory tests.unit.test_tofe_overlay`:
+  **10 tests passed**.
+- `python -m compileall -q modules/tofe_theory.py modules/tofe_overlay.py`
+  `widgets/matplotlib/measurement/tofe_histogram.py`
+  `tests/unit/test_tofe_theory.py tests/unit/test_tofe_overlay.py`: **passed**.
+- `git diff --check`: **passed**.
+
+Failure / limitation:
+
+- No test failed in this work unit.
+- The overlay accepts already-calculated channel loci but is not yet populated
+  automatically at widget startup. Potku still lacks a persisted
+  energy-channel calibration, so silently assuming a slope/offset would put
+  physically calculated loci at misleading positions.
+- A full Qt widget integration test and screenshot remain pending while the
+  JIBAL external data needed to construct concrete Potku objects is absent.
+
+Next:
+
+1. Add a runtime theory settings dialog for recoil elements and explicit
+   energy-channel slope/offset, then calculate and inject loci on user request.
+2. Invalidate/recalculate displayed loci when beam, detector, or calibration
+   settings change.
+3. Initialize/build JIBAL external components and add a concrete measurement
+   integration test plus a histogram screenshot using example data.

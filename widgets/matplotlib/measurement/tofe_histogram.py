@@ -39,6 +39,7 @@ import widgets.gui_utils as gutils
 
 from modules.enums import ToFEColorScheme
 from modules.measurement import Measurement
+from modules.tofe_overlay import draw_theory_loci
 from dialogs.energy_spectrum import EnergySpectrumWidget
 from dialogs.graph_settings import TofeGraphSettingsWidget
 from dialogs.measurement.depth_profile import DepthProfileWidget
@@ -165,6 +166,10 @@ class MatplotlibHistogramWidget(MatplotlibWidget):
 
         self.background = None
 
+        # Theory loci are visual suggestions only. They are deliberately kept
+        # outside Measurement.selector so they cannot be auto-saved as cuts.
+        self.__theory_loci = ()
+
         self.on_draw()
 
     def on_draw(self):
@@ -246,6 +251,14 @@ class MatplotlibHistogramWidget(MatplotlibWidget):
         self.mpl_toolbar.update()
 
         self.measurement.draw_selection(self.axes)
+
+        if (self.theoryOverlayButton.isChecked() and
+                self.__theory_loci):
+            draw_theory_loci(
+                self.axes,
+                self.__theory_loci,
+                transposed=self.transpose_axes,
+            )
         
         # Invert axis
         if self.invert_Y and not self.__inverted_Y:
@@ -432,6 +445,35 @@ class MatplotlibHistogramWidget(MatplotlibWidget):
                                      "delall.png")
         self.elementSelectionDeleteButton.setToolTip("Delete all selections")
         self.mpl_toolbar.addWidget(self.elementSelectionDeleteButton)
+
+        self.mpl_toolbar.addSeparator()
+        self.theoryOverlayButton = QtWidgets.QToolButton(self)
+        self.theoryOverlayButton.setText("Theory")
+        self.theoryOverlayButton.setCheckable(True)
+        self.theoryOverlayButton.setEnabled(False)
+        self.theoryOverlayButton.clicked.connect(self.on_draw)
+        self.theoryOverlayButton.setToolTip(
+            "Show theoretical element positions (not saved as selections)"
+        )
+        self.mpl_toolbar.addWidget(self.theoryOverlayButton)
+
+    def set_theory_loci(self, loci):
+        """Replace the non-persistent theoretical overlay data.
+
+        The caller is responsible for calculating channel coordinates, for
+        example with ``calculate_loci_for_measurement``. Supplying an empty
+        iterable clears and disables the overlay.
+        """
+        self.__theory_loci = tuple(loci)
+        has_loci = bool(self.__theory_loci)
+        self.theoryOverlayButton.setEnabled(has_loci)
+        if not has_loci:
+            self.theoryOverlayButton.setChecked(False)
+        self.on_draw()
+
+    def clear_theory_loci(self):
+        """Remove all theoretical overlay data without touching selections."""
+        self.set_theory_loci(())
 
     def on_click(self, event):
         """On click event above graph.
