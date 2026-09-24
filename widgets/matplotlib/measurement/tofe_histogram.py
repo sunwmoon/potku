@@ -38,14 +38,17 @@ import modules.general_functions as gf
 import widgets.gui_utils as gutils
 
 from modules.enums import ToFEColorScheme
+from modules.element import Element
 from modules.measurement import Measurement
 from modules.tofe_overlay import draw_theory_loci
+from modules.tofe_theory import calculate_loci_from_settings
 from dialogs.energy_spectrum import EnergySpectrumWidget
 from dialogs.graph_settings import TofeGraphSettingsWidget
 from dialogs.measurement.depth_profile import DepthProfileWidget
 from dialogs.measurement.element_losses import ElementLossesWidget
 from dialogs.measurement.selection import SelectionSettingsDialog
 from dialogs.measurement.import_selection import SelectionDialog
+from dialogs.measurement.theory_prediction import TheoryPredictionDialog
 import dialogs.file_dialogs as fdialogs
 
 from matplotlib import cm
@@ -447,8 +450,18 @@ class MatplotlibHistogramWidget(MatplotlibWidget):
         self.mpl_toolbar.addWidget(self.elementSelectionDeleteButton)
 
         self.mpl_toolbar.addSeparator()
+        self.theorySettingsButton = QtWidgets.QToolButton(self)
+        self.theorySettingsButton.setText("Theory…")
+        self.theorySettingsButton.clicked.connect(
+            self.configure_theory_overlay
+        )
+        self.theorySettingsButton.setToolTip(
+            "Calculate theoretical element positions for this measurement"
+        )
+        self.mpl_toolbar.addWidget(self.theorySettingsButton)
+
         self.theoryOverlayButton = QtWidgets.QToolButton(self)
-        self.theoryOverlayButton.setText("Theory")
+        self.theoryOverlayButton.setText("Show")
         self.theoryOverlayButton.setCheckable(True)
         self.theoryOverlayButton.setEnabled(False)
         self.theoryOverlayButton.clicked.connect(self.on_draw)
@@ -456,6 +469,31 @@ class MatplotlibHistogramWidget(MatplotlibWidget):
             "Show theoretical element positions (not saved as selections)"
         )
         self.mpl_toolbar.addWidget(self.theoryOverlayButton)
+
+    def configure_theory_overlay(self):
+        """Calculate loci from current measurement and runtime settings."""
+        dialog = TheoryPredictionDialog(self)
+        if dialog.exec_() != QtWidgets.QDialog.Accepted:
+            return
+
+        try:
+            settings = dialog.prediction_settings()
+            loci = calculate_loci_from_settings(
+                self.measurement, settings, Element.from_string
+            )
+        except (TypeError, ValueError) as error:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Theory prediction",
+                str(error),
+                QtWidgets.QMessageBox.Ok,
+            )
+            return
+
+        self.__theory_loci = tuple(loci)
+        self.theoryOverlayButton.setEnabled(True)
+        self.theoryOverlayButton.setChecked(True)
+        self.on_draw()
 
     def set_theory_loci(self, loci):
         """Replace the non-persistent theoretical overlay data.

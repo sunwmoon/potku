@@ -9,6 +9,7 @@ instead of being hidden in the plotting code.
 from dataclasses import dataclass
 from math import cos
 from math import pi
+import re
 from typing import Sequence
 from typing import Tuple
 
@@ -17,6 +18,7 @@ import numpy as np
 
 ATOMIC_MASS_UNIT_KG = 1.660_539_066_60e-27
 MEV_TO_JOULE = 1.602_176_634e-13
+_ELEMENT_TOKEN = re.compile(r"^(?:[1-9][0-9]{0,2})?[A-Z][a-z]?$")
 
 
 @dataclass(frozen=True)
@@ -56,6 +58,59 @@ class ChannelLocus:
     tof_channel: np.ndarray
     energy_channel: np.ndarray
     maximum_recoil_energy_mev: float
+
+
+@dataclass(frozen=True)
+class TheoryPredictionSettings:
+    """User-controlled inputs that are not stored in a Potku measurement."""
+
+    element_tokens: Tuple[str, ...]
+    energy_calibration: LinearCalibration
+    minimum_energy_fraction: float = 0.08
+    point_count: int = 300
+
+    def __post_init__(self):
+        if not self.element_tokens:
+            raise ValueError("At least one recoil element is required")
+        if not np.isfinite(self.energy_calibration.slope) or \
+                self.energy_calibration.slope == 0:
+            raise ValueError(
+                "Energy calibration slope must be finite and non-zero"
+            )
+        if not np.isfinite(self.energy_calibration.offset):
+            raise ValueError("Energy calibration offset must be finite")
+        if not 0 < self.minimum_energy_fraction <= 1:
+            raise ValueError(
+                "Minimum energy fraction must be in the range (0, 1]"
+            )
+        if self.point_count < 2:
+            raise ValueError("At least two locus points are required")
+
+    @classmethod
+    def from_text(cls, element_text, energy_slope_mev_per_channel,
+                  energy_offset_mev=0.0, minimum_energy_fraction=0.08,
+                  point_count=300):
+        """Parse comma/whitespace-separated isotope symbols into settings."""
+        tokens = tuple(filter(None, re.split(r"[\s,]+", element_text.strip())))
+        invalid = [
+            token for token in tokens
+            if not _ELEMENT_TOKEN.fullmatch(token)
+        ]
+        if invalid:
+            raise ValueError(
+                "Invalid recoil element notation: " + ", ".join(invalid)
+            )
+        if len(tokens) != len(set(tokens)):
+            raise ValueError("Recoil element list contains duplicates")
+        return cls(
+            element_tokens=tokens,
+            energy_calibration=LinearCalibration(
+                float(energy_slope_mev_per_channel),
+                float(energy_offset_mev),
+            ),
+            minimum_energy_fraction=float(minimum_energy_fraction),
+            point_count=int(point_count),
+        )
 
 
 def recoil_kinematic_factor(beam_mass_u, recoil_mass_u, recoil_angle_deg):
@@ -177,6 +232,25 @@ def calculate_loci_for_measurement(
         ))
 
     return tuple(loci)
+
+
+def calculate_loci_from_settings(measurement, settings, element_factory):
+    """Create elements from validated settings and calculate channel loci.
+
+    ``element_factory`` is explicit so this Qt-independent module does not
+    load Potku's JIBAL-backed mass tables at import time. Production callers
+    pass ``Element.from_string``; tests can use lightweight element objects.
+    """
+    elements = tuple(
+        element_factory(token) for token in settings.element_tokens
+    )
+    return calculate_loci_for_measurement(
+        measurement,
+        elements,
+        settings.energy_calibration,
+        minimum_energy_fraction=settings.minimum_energy_fraction,
+        point_count=settings.point_count,
+    )
 
 
 def _element_mass(element, description):

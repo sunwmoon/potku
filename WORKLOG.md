@@ -105,3 +105,49 @@ Next:
    settings change.
 3. Initialize/build JIBAL external components and add a concrete measurement
    integration test plus a histogram screenshot using example data.
+
+## 2026-09-24 16:10 KST - Runtime theory configuration
+
+Implemented:
+
+- Added a `Theory…` toolbar action that opens runtime settings for recoil
+  isotopes/elements, energy-channel slope/offset, and the displayed minimum
+  energy fraction.
+- Connected accepted settings to the current measurement's beam, detector,
+  flight-length, and ToF calibration values, then enabled and displayed the
+  calculated labeled loci immediately.
+- Added Qt-independent parsing and validation for element notation and energy
+  calibration. Empty/invalid/duplicate element lists and zero/non-finite
+  slopes are rejected before replacing the existing overlay.
+- Kept predictions in the histogram's transient overlay state. The settings
+  dialog explicitly states that no selection is created or saved.
+
+Verification:
+
+- `python -m unittest tests.unit.test_tofe_theory tests.unit.test_tofe_overlay`:
+  **14 tests passed**.
+- `python -m compileall -q` for the changed calculator, dialog, histogram, and
+  test files: **passed**.
+- `git diff --check`: **passed**.
+
+Failure / limitation:
+
+- The attempted offscreen dialog smoke test could not start because PyQt5 is
+  not installed in this execution environment (`ModuleNotFoundError`). The
+  dialog file compiles, but interactive rendering still needs verification in
+  a Potku development environment with GUI dependencies installed.
+- The JIBAL submodules remain uninitialized, so a concrete `Element` and
+  `Measurement` integration test and a real histogram screenshot are still
+  blocked. Calculation and settings flow are covered with interface-compatible
+  test doubles.
+- The energy calibration is intentionally runtime-only; it is not silently
+  persisted into existing detector files or reused for another measurement.
+
+Next:
+
+1. Initialize/build JIBAL and run the new dialog against a concrete Potku
+   measurement, then capture a histogram screenshot with labeled loci.
+2. Preserve the last runtime theory settings per open histogram and invalidate
+   or recalculate loci when measurement settings change.
+3. Add detector-resolution bands around the center loci before using the
+   theory distance as an automatic banana-candidate confidence feature.

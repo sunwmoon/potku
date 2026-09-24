@@ -4,7 +4,9 @@ from types import SimpleNamespace
 import numpy as np
 
 from modules.tofe_theory import calculate_loci_for_measurement
+from modules.tofe_theory import calculate_loci_from_settings
 from modules.tofe_theory import LinearCalibration
+from modules.tofe_theory import TheoryPredictionSettings
 from modules.tofe_theory import calculate_ideal_locus
 from modules.tofe_theory import recoil_kinematic_factor
 from modules.tofe_theory import time_of_flight
@@ -90,6 +92,53 @@ class TestTofeTheory(unittest.TestCase):
                 measurement, [FakeElement("Xx", None)],
                 LinearCalibration(0.01)
             )
+
+    def test_prediction_settings_parse_elements_and_calibration(self):
+        settings = TheoryPredictionSettings.from_text(
+            "1H, 2H 16O", 0.002, -0.1, 0.2, 25
+        )
+
+        self.assertEqual(settings.element_tokens, ("1H", "2H", "16O"))
+        self.assertEqual(settings.energy_calibration.slope, 0.002)
+        self.assertEqual(settings.energy_calibration.offset, -0.1)
+        self.assertEqual(settings.minimum_energy_fraction, 0.2)
+        self.assertEqual(settings.point_count, 25)
+
+    def test_prediction_settings_reject_invalid_or_duplicate_elements(self):
+        for element_text in ("", "oxygen", "16O, 16O", "0H"):
+            with self.subTest(element_text=element_text):
+                with self.assertRaises(ValueError):
+                    TheoryPredictionSettings.from_text(element_text, 0.001)
+
+    def test_prediction_settings_reject_zero_energy_slope(self):
+        with self.assertRaises(ValueError):
+            TheoryPredictionSettings.from_text("1H", 0.0)
+
+    def test_calculate_loci_from_settings_uses_element_factory(self):
+        beam_ion = FakeElement("127I", 126.904_473)
+        measurement = SimpleNamespace(
+            run=SimpleNamespace(
+                beam=SimpleNamespace(ion=beam_ion, energy=30)
+            ),
+            detector=FakeDetector(
+                detector_theta=40, tof_slope=1e-10,
+                tof_offset=2e-9, tof_length=0.5,
+            ),
+        )
+        settings = TheoryPredictionSettings.from_text(
+            "1H, 16O", 0.001, point_count=4
+        )
+        elements = {
+            "1H": FakeElement("1H", 1.0078),
+            "16O": FakeElement("16O", 15.995),
+        }
+
+        loci = calculate_loci_from_settings(
+            measurement, settings, elements.__getitem__
+        )
+
+        self.assertEqual([locus.label for locus in loci], ["1H", "16O"])
+        self.assertEqual(loci[0].tof_channel.shape, (4,))
 
 
 class FakeElement:
