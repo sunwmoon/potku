@@ -8,6 +8,7 @@ from modules.tofe_theory import calculate_loci_from_settings
 from modules.tofe_theory import LinearCalibration
 from modules.tofe_theory import TheoryPredictionSettings
 from modules.tofe_theory import calculate_ideal_locus
+from modules.tofe_theory import calculate_foil_aware_locus
 from modules.tofe_theory import recoil_kinematic_factor
 from modules.tofe_theory import time_of_flight
 
@@ -29,6 +30,53 @@ class TestTofeTheory(unittest.TestCase):
         self.assertAlmostEqual(locus.maximum_recoil_energy_mev, 10.0)
         self.assertAlmostEqual(locus.energy_mev[-1], 10.0)
         self.assertTrue(np.all(np.diff(locus.tof_seconds) < 0))
+
+    def test_foil_aware_locus_separates_flight_and_detector_energy(self):
+        locus = calculate_foil_aware_locus(
+            beam_mass_u=4,
+            beam_energy_mev=10,
+            recoil_mass_u=4,
+            recoil_angle_deg=0,
+            flight_length_m=1,
+            first_foil_loss=lambda energy: np.full_like(energy, 0.5),
+            downstream_loss=lambda energy: np.full_like(energy, 1.0),
+            minimum_energy_fraction=0.5,
+            point_count=3,
+        )
+
+        np.testing.assert_allclose(locus.recoil_energy_mev, [5.0, 7.5, 10.0])
+        np.testing.assert_allclose(locus.flight_energy_mev, [4.5, 7.0, 9.5])
+        np.testing.assert_allclose(locus.energy_mev, [3.5, 6.0, 8.5])
+        np.testing.assert_allclose(
+            locus.tof_seconds,
+            time_of_flight(locus.flight_energy_mev, 4, 1),
+        )
+
+    def test_zero_foil_loss_matches_ideal_locus(self):
+        ideal = calculate_ideal_locus(127, 30, 16, 40, 0.623, point_count=4)
+        foil_aware = calculate_foil_aware_locus(
+            127, 30, 16, 40, 0.623, point_count=4
+        )
+
+        np.testing.assert_allclose(foil_aware.energy_mev, ideal.energy_mev)
+        np.testing.assert_allclose(
+            foil_aware.tof_seconds, ideal.tof_seconds
+        )
+
+    def test_foil_loss_rejects_nonphysical_results(self):
+        invalid_losses = (
+            lambda energy: -np.ones_like(energy),
+            lambda energy: energy,
+            lambda energy: np.full_like(energy, np.nan),
+        )
+        for loss_function in invalid_losses:
+            with self.subTest(loss_function=loss_function):
+                with self.assertRaises(ValueError):
+                    calculate_foil_aware_locus(
+                        4, 10, 4, 0, 1,
+                        first_foil_loss=loss_function,
+                        point_count=3,
+                    )
 
     def test_channel_conversion_uses_detector_calibrations(self):
         locus = calculate_ideal_locus(4, 10, 4, 0, 1, point_count=2)

@@ -199,3 +199,49 @@ Next:
    candidate confidence feature.
 3. Preserve/invalidate runtime theory settings when measurement or detector
    parameters change.
+
+## 2026-09-24 18:04 KST - Foil-aware locus energy model
+
+Implemented:
+
+- Added a foil-aware locus calculation that keeps three physically distinct
+  energy arrays: recoil energy before detector foils, flight energy between
+  the timing foils, and energy reaching the active energy detector.
+- Made the first timing-foil and downstream losses injectable, vectorized
+  callbacks. This gives the next JIBAL integration a narrow interface and
+  avoids embedding subprocess or detector-file logic in the kinematics.
+- Calculated ToF from the post-first-foil flight energy while retaining the
+  post-downstream-material energy for the histogram Energy coordinate.
+- Added validation for negative, non-finite, wrong-shaped, and energy-
+  exhausting loss results. The existing ideal calculation remains the exact
+  zero-loss fallback, so Potku operation is unchanged when no stopping model
+  is available.
+
+Verification:
+
+- `python -m unittest tests.unit.test_tofe_theory tests.unit.test_tofe_overlay`:
+  **20 tests passed**.
+- `python -m compileall -q modules/tofe_theory.py`
+  `tests/unit/test_tofe_theory.py`: **passed**.
+- `git diff --check`: **passed**.
+
+Failure / limitation:
+
+- No test failed in the completed work unit.
+- This commit deliberately does not enable foil stopping in the GUI yet. The
+  current `general_functions.carbon_stopping()` launches `jibaltool` once per
+  energy and prints subprocess output, so calling it directly for all 300
+  locus points would freeze the UI and produce excessive output.
+- Target stopping, straggling, angular spread, and non-carbon downstream
+  layers are still outside the model. Theory overlays therefore continue to
+  use the ideal zero-loss fallback until a tested stopping adapter is supplied.
+
+Next:
+
+1. Add a batched/cached JIBAL carbon-stopping adapter that samples a small
+   energy grid, interpolates the losses, and reports tool failures without
+   changing the existing overlay.
+2. Read the first timing foil and downstream detector layers from `Detector`,
+   then pass their stopping models into the foil-aware calculation.
+3. Add a GUI option showing whether the displayed locus is `Ideal` or
+   `Foil-corrected`, with ideal fallback when JIBAL is unavailable.

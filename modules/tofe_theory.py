@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from math import cos
 from math import pi
 import re
+from typing import Callable
+from typing import Optional
 from typing import Sequence
 from typing import Tuple
 
@@ -41,6 +43,8 @@ class IdealLocus:
     energy_mev: np.ndarray
     tof_seconds: np.ndarray
     maximum_recoil_energy_mev: float
+    recoil_energy_mev: Optional[np.ndarray] = None
+    flight_energy_mev: Optional[np.ndarray] = None
 
     def as_channels(self, tof_calibration, energy_calibration):
         """Return ``(tof_channel, energy_channel)`` arrays."""
@@ -165,7 +169,66 @@ def calculate_ideal_locus(beam_mass_u, beam_energy_mev, recoil_mass_u,
         point_count,
     )
     times = time_of_flight(energies, recoil_mass_u, flight_length_m)
-    return IdealLocus(energies, times, maximum_energy)
+    return IdealLocus(
+        energy_mev=energies,
+        tof_seconds=times,
+        maximum_recoil_energy_mev=maximum_energy,
+        recoil_energy_mev=energies,
+        flight_energy_mev=energies,
+    )
+
+
+def calculate_foil_aware_locus(
+        beam_mass_u, beam_energy_mev, recoil_mass_u, recoil_angle_deg,
+        flight_length_m,
+        first_foil_loss: Optional[Callable[[np.ndarray], np.ndarray]] = None,
+        downstream_loss: Optional[Callable[[np.ndarray], np.ndarray]] = None,
+        minimum_energy_fraction=0.08, point_count=300):
+    """Calculate a locus with separate recoil, flight, and detector energies.
+
+    ``first_foil_loss`` receives the recoil energy before the upstream timing
+    foil. ``downstream_loss`` receives the energy after that foil and covers
+    material between the ToF section and the active energy detector. Both
+    callbacks return a positive energy loss in MeV for every input energy.
+
+    ToF is calculated from the energy between the timing foils, whereas the
+    histogram energy axis uses the energy reaching the active detector. This
+    distinction is required before a JIBAL-backed foil stopping model can be
+    connected without conflating the two histogram coordinates.
+    """
+    ideal = calculate_ideal_locus(
+        beam_mass_u=beam_mass_u,
+        beam_energy_mev=beam_energy_mev,
+        recoil_mass_u=recoil_mass_u,
+        recoil_angle_deg=recoil_angle_deg,
+        flight_length_m=flight_length_m,
+        minimum_energy_fraction=minimum_energy_fraction,
+        point_count=point_count,
+    )
+    recoil_energy = ideal.recoil_energy_mev
+    first_loss = _evaluate_energy_loss(
+        first_foil_loss, recoil_energy, "First timing-foil energy loss"
+    )
+    flight_energy = recoil_energy - first_loss
+    _validate_remaining_energy(
+        flight_energy, "First timing-foil energy loss"
+    )
+
+    later_loss = _evaluate_energy_loss(
+        downstream_loss, flight_energy, "Downstream energy loss"
+    )
+    detector_energy = flight_energy - later_loss
+    _validate_remaining_energy(detector_energy, "Downstream energy loss")
+
+    return IdealLocus(
+        energy_mev=detector_energy,
+        tof_seconds=time_of_flight(
+            flight_energy, recoil_mass_u, flight_length_m
+        ),
+        maximum_recoil_energy_mev=ideal.maximum_recoil_energy_mev,
+        recoil_energy_mev=recoil_energy,
+        flight_energy_mev=flight_energy,
+    )
 
 
 def calculate_loci_for_measurement(
@@ -309,3 +372,28 @@ def _number(value, description):
     if not np.isfinite(number):
         raise ValueError(f"{description} must be a finite number")
     return number
+
+
+def _evaluate_energy_loss(loss_function, incident_energy, description):
+    """Evaluate and validate an optional vectorized energy-loss callback."""
+    if loss_function is None:
+        return np.zeros_like(incident_energy)
+    try:
+        loss = np.asarray(loss_function(incident_energy), dtype=float)
+        loss = np.broadcast_to(loss, incident_energy.shape)
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            f"{description} must return one finite value per energy"
+        ) from error
+    if not np.all(np.isfinite(loss)):
+        raise ValueError(f"{description} must be finite")
+    if np.any(loss < 0):
+        raise ValueError(f"{description} cannot be negative")
+    return loss
+
+
+def _validate_remaining_energy(energy, description):
+    if np.any(energy <= 0):
+        raise ValueError(
+            f"{description} must leave positive particle energy"
+        )
