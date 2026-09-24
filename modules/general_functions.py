@@ -276,7 +276,8 @@ def convert_amu_to_kg(mass_in_amus: float) -> float:
     return float(mass_in_amus) * amu
 
 
-def carbon_stopping(element, isotope, energy, carbon_thickness, carbon_density):
+def carbon_stopping(element, isotope, energy, carbon_thickness, carbon_density,
+                    verbose=True, strict=False):
     """Calculate stopping of a particle in a carbon foil
 
     Args:
@@ -287,7 +288,10 @@ def carbon_stopping(element, isotope, energy, carbon_thickness, carbon_density):
         carbon_density: Density of the carbon foil in g/cm3. (e.g. 2.27)
 
     Returns:
-        Energy loss of particle in a carbon foil of some thickness in Joules
+        Energy loss of particle in a carbon foil of some thickness in Joules.
+        ``verbose=False`` suppresses command output. ``strict=True`` raises a
+        ``RuntimeError`` when jibaltool fails or does not return ``delta E``;
+        both options default to the legacy behaviour.
     """
     bin_dir = get_bin_dir()
     # parameters can be 0 but not None
@@ -300,15 +304,24 @@ def carbon_stopping(element, isotope, energy, carbon_thickness, carbon_density):
             jibaltool = './jibaltool'
 
         args = [jibaltool, "stop", '-l', 'C', '-t', "{0}tfu".format(areal_density_tfu), "{0}{1}".format(isotope, element), str(energy),]
-        print(args)
+        if verbose:
+            print(args)
         p = subprocess.Popen(
             args, cwd=bin_dir, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE)
         stdout, unused_stderr = p.communicate()
         output = stdout.decode()
-        print(unused_stderr.decode())
-        print(output)
+        error_output = unused_stderr.decode()
+        if verbose:
+            print(error_output)
+            print(output)
+        if strict and p.returncode:
+            raise RuntimeError(
+                f"jibaltool failed with exit code {p.returncode}: "
+                f"{error_output.strip()}"
+            )
         energy_loss = 0.0
+        energy_loss_found = False
         for line in output.split("\n"):
             try:
                 (var, val) = line.split(' = ', 1)
@@ -320,8 +333,11 @@ def carbon_stopping(element, isotope, energy, carbon_thickness, carbon_density):
                     x *= 1.6021766e-13
                 if var == 'delta E':
                     energy_loss = x
+                    energy_loss_found = True
             except ValueError:
                 continue
+        if strict and not energy_loss_found:
+            raise RuntimeError("jibaltool output did not contain delta E")
         return energy_loss
     else:
         print("No parameters to calculate carbon stopping energy.")
@@ -726,4 +742,3 @@ def check_max_path_length(root_path = os.getcwd()):
                 longest_size = len(os.path.join(root, name))
                 longest_path = os.path.join(root, name)
     return longest_size, longest_path
-  

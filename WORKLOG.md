@@ -245,3 +245,59 @@ Next:
    then pass their stopping models into the foil-aware calculation.
 3. Add a GUI option showing whether the displayed locus is `Ideal` or
    `Foil-corrected`, with ideal fallback when JIBAL is unavailable.
+
+## 2026-09-24 19:05 KST - Cached JIBAL stopping adapter
+
+Implemented:
+
+- Added `CarbonStoppingInterpolator`, a vectorized MeV-in/MeV-out callback
+  over Potku's scalar JIBAL carbon-stopping helper. It evaluates a configurable
+  geometric grid (24 points by default) rather than launching one process for
+  every point in a 300-point locus.
+- Cached both individual backend samples and the current interpolation grid.
+  Repeated redraws and requests inside the cached energy range therefore make
+  no additional `jibaltool` calls.
+- Added validation for invalid incident energies, backend errors, non-finite
+  or negative losses, and losses that exhaust the particle energy. Errors are
+  reported as `StoppingCalculationError` with the failing energy included.
+- Extended the legacy `carbon_stopping()` helper with backward-compatible
+  `verbose` and `strict` options. The adapter suppresses process output and
+  treats a non-zero exit or missing `delta E` result as a failure, while old
+  callers retain their previous defaults.
+- Kept the adapter outside the GUI and did not connect it to the displayed
+  locus yet. Consequently, unavailable JIBAL data cannot replace or remove
+  the current ideal, non-persistent overlay.
+
+Verification:
+
+- `python -m unittest tests.unit.test_tofe_theory`
+  `tests.unit.test_tofe_overlay tests.unit.test_tofe_stopping`:
+  **26 tests passed**.
+- Tests cover interpolation, cache reuse, scalar and multidimensional input,
+  quiet/strict JIBAL invocation, backend failure context, and rejection of
+  invalid or energy-exhausting losses.
+- `python -m compileall -q` for the changed modules and tests: **passed**.
+- `git diff --check`: **passed**.
+
+Failure / limitation:
+
+- The broader `test_general_functions.py` could not be imported because
+  `external/share/jibal/masses.dat` is absent. Initializing the JIBAL submodule
+  was attempted, but its GitHub clone produced no progress in this restricted
+  environment and was interrupted after about 90 seconds.
+- The interpolation error has not yet been quantified against real JIBAL
+  output. The 24-point default is an implementation starting point, not a
+  validated physics-accuracy setting.
+- The adapter is not yet constructed from `Detector.foils`; the GUI continues
+  to calculate the same ideal overlay as before this change.
+
+Next:
+
+1. Extract the first timing-foil carbon layer and downstream carbon layers
+   from `Detector`, construct one cached adapter per recoil isotope, and pass
+   them to `calculate_foil_aware_locus()`.
+2. Preserve the current ideal locus when the foil definition is unsupported
+   or JIBAL fails, and expose an `Ideal` / `Foil-corrected` calculation status
+   to the histogram without creating a selection.
+3. In an environment with built JIBAL, compare 24-point interpolation with a
+   dense direct calculation and set an accuracy-based sampling tolerance.
