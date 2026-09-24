@@ -691,3 +691,60 @@ Next:
    before that action.
 3. Add synthetic truth-overlap metrics and overlapping or missing banana
    cases before tuning confidence thresholds.
+
+## 2026-09-25 04:20 KST - Transactional Potku selection adapter
+
+Implemented:
+
+- Added an explicit adapter that converts one approved banana polygon into a
+  closed ERD `Selection` with the user-confirmed element and isotope.
+- Kept proposal coordinates canonical as `(ToF, Energy)` and swapped them only
+  when Potku currently displays transposed axes. Selection-file output therefore
+  remains compatible with Potku's existing transpose handling.
+- Rounded candidate vertices to integer channels, removed consecutive duplicate
+  vertices, and rejected polygons that collapse below three distinct points.
+- Connected the adapter to the existing `CandidateReviewSession.accept()`
+  callback boundary in tests. Edit and Reject never receive the adapter and do
+  not mutate the selector or create a selection file.
+- Added transactional rollback around Potku's `update_selections()` call. A
+  failed update removes the new in-memory selection, restores the prior
+  `.selections` bytes, removes a partial first file, and leaves the review item
+  pending for correction or retry.
+- Updated `USER_ACTIONS.md` to request confirmation of isotope-specific versus
+  natural-element defaults before the GUI Accept dialog is finalized.
+
+Verification:
+
+- `python -m unittest tests.unit.test_tofe_selection_adapter`
+  `tests.unit.test_tofe_candidate_review tests.unit.test_tofe_candidate`
+  `tests.unit.test_tofe_overlay tests.unit.test_tofe_synthetic`
+  `tests.unit.test_tofe_theory tests.unit.test_tofe_stopping`
+  `tests.unit.test_tofe_report`: **71 tests passed**.
+- Tests prove that Edit and Reject perform **0** selector updates, Accept
+  performs exactly **1**, transposed coordinates are mapped correctly, and a
+  simulated failed save restores both memory and the original file.
+- The deterministic synthetic demo regenerated **25,000 events** and again
+  detected **4/4** candidates with unchanged confidence values: 1H 0.802,
+  12C 0.749, 16O 0.692, and 28Si 0.686.
+- `python -m compileall -q` for the adapter and tests: **passed**.
+- `git diff --check`: **passed**.
+
+Failure / limitation:
+
+- No automated test failed in the completed work unit.
+- PyQt5 remains unavailable, so the adapter uses an injectable factory in
+  tests and the concrete Potku `Selection` could not be instantiated here.
+- The GUI still has no review list or `Accept`, `Edit`, and `Reject` controls.
+  The new adapter is therefore implemented and verified but not yet reachable
+  from the live histogram window.
+- Real KIST events and selections are still absent, so confidence and polygon
+  accuracy remain synthetic-only.
+
+Next:
+
+1. Add a review dialog that lists proposals with confidence and exposes
+   `Accept`, `Edit`, and `Reject` actions.
+2. Require element/isotope confirmation in that dialog and call the new
+   adapter only after the final Accept confirmation.
+3. Add synthetic truth-overlap metrics plus overlapping and missing-banana
+   cases before moving to ML feature extraction.
