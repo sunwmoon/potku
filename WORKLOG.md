@@ -393,6 +393,9 @@ Verification:
 Failure / limitation:
 
 - No unit test failed in the completed work unit.
+- Standard HTTPS `git push` could not read credentials in the execution shell.
+  The exact tested Git tree was published as a non-force fast-forward through
+  the connected GitHub API, and the local branch was synchronized to it.
 - PyQt5 remains unavailable in this execution environment, so the new report
   dialog compiles but could not be opened interactively. Report generation,
   endpoint validation, fallback preservation, and TSV quoting are covered by
