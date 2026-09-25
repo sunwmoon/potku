@@ -871,3 +871,69 @@ Next:
    correction model can identify ambiguous shared ridges.
 3. Add non-persistent drag handles for proposal vertices and validate the GUI
    with PyQt5 and one real measurement when available.
+
+## 2026-09-25 13:10 KST - Accepted selections to ML feature rows
+
+Implemented:
+
+- Added a Qt- and scikit-learn-independent adapter for completed Potku ERD
+  selections. It filters incomplete and RBS selections, restores canonical
+  `(ToF, Energy)` coordinates for transposed displays, closes polygons, and
+  preserves element/isotope labels.
+- Added one deterministic 25-field ML row per accepted polygon. The schema
+  contains measurement identity and target, enclosed-event count/fraction and
+  moments, polygon area/perimeter/compactness/extents/centroid, detector-FWHM
+  normalized offsets from the matching theory locus, and event-based overlap
+  with neighbouring selections.
+- Added strict validation for finite events, valid isotope labels, nonzero
+  polygon area, unique theory labels, and binary acceptance targets. Empty
+  polygons produce finite zero-valued event statistics rather than NaN.
+- Added stable TSV export and extended the synthetic demonstration to write
+  `ml_training_rows.tsv`. The extraction layer only reads event and selection
+  objects; it does not create, edit, or save any Potku selection.
+- Updated `USER_ACTIONS.md` to require each raw event file to remain paired
+  with the exact accepted `.selections` file and measurement identity.
+
+Verification:
+
+- `python -m unittest tests.unit.test_tofe_training_data`
+  `tests.unit.test_tofe_candidate_metrics tests.unit.test_tofe_review_controller`
+  `tests.unit.test_tofe_selection_adapter tests.unit.test_tofe_candidate_review`
+  `tests.unit.test_tofe_candidate tests.unit.test_tofe_overlay`
+  `tests.unit.test_tofe_synthetic tests.unit.test_tofe_theory`
+  `tests.unit.test_tofe_stopping tests.unit.test_tofe_report`:
+  **95 tests passed**.
+- `python -m compileall -q` for the new feature module, synthetic demo, and
+  tests: **passed**.
+- `git diff --check`: **passed**.
+- Default 25,000-event demo: **4/4 candidates**, micro precision **0.992**,
+  recall **0.839**, F1 **0.909**, and event IoU **0.834**.
+- The four accepted synthetic polygons produced **4 rows x 25 fields**. Their
+  enclosed-event counts were 4,445 (1H), 4,311 (12C), 4,142 (16O), and 4,016
+  (28Si); every row matched a theory locus and all values were finite.
+
+Failure / limitation:
+
+- The first synthetic conversion test used only 1,200 signal events per locus;
+  three candidates fell below the established ridge thresholds. The test was
+  corrected to use the documented 25,000-event preset and then all 95 tests
+  passed. No production threshold was weakened.
+- Existing accepted selections provide positive examples only. A correction
+  model also needs proposed polygons that users rejected or edited, recorded
+  without saving them as accepted Potku selections.
+- Theory offsets use the present ideal/foil-corrected locus and detector FWHM;
+  they are not calibrated real-data residuals until KIST events and settings
+  are supplied.
+- Real KIST events, accepted selections, PyQt5, and JIBAL remain unavailable.
+  Existing Potku behavior and the explicit approval-only save boundary are
+  unchanged.
+
+Next:
+
+1. Represent proposed, edited, accepted, and rejected candidate decisions as
+   labeled training examples without writing rejected polygons to Potku files.
+2. Train and serialize a small optional baseline correction model using the 25
+   physical/shape fields, with deterministic fallback to heuristic confidence
+   when no compatible model exists.
+3. Add grouped measurement-level train/validation splitting and verify it on
+   synthetic overlap, missing-element, and shifted-locus scenarios.

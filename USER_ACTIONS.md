@@ -9,6 +9,8 @@ turn the result into a calibrated KIST workflow.
 1. Provide one previously analysed measurement containing the raw ToF-Energy
    events and its accepted Potku selection file.  Three to five measurements
    from different samples would support the first machine-learning split.
+   Keep each raw event file paired with the exact `.selections` file and
+   measurement name used during analysis so training rows cannot be mismatched.
 2. Export or confirm the measurement settings used for that run: beam isotope,
    terminal voltage or beam energy, charge state, recoil angle, timing-foil
    positions, foil material and thickness, detector time resolution, detector
@@ -35,6 +37,10 @@ turn the result into a calibrated KIST workflow.
 9. If possible, include one difficult spectrum with overlapping bananas or an
    expected element that is absent.  These cases are now explicit synthetic
    tests and need a real-data comparison before threshold calibration.
+10. When the review workflow is tested, keep a small record of automatic
+    candidates that were accepted unchanged, edited, or rejected.  Existing
+    `.selections` files contain positive examples, but these review decisions
+    are needed to teach the correction model what a poor proposal looks like.
 
 No real measurement is currently present in this working copy.  Until these
 items arrive, confidence values measure performance on synthetic data and must

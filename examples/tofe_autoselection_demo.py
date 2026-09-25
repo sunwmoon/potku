@@ -22,6 +22,9 @@ from modules.tofe_candidate_metrics import evaluate_candidate_truth
 from modules.tofe_candidate_metrics import summarize_candidate_metrics
 from modules.tofe_synthetic import TofeGeometry
 from modules.tofe_synthetic import generate_synthetic_events
+from modules.tofe_training_data import AcceptedSelection
+from modules.tofe_training_data import build_training_feature_rows
+from modules.tofe_training_data import training_rows_tsv
 
 
 def run_demo(output_directory):
@@ -67,6 +70,17 @@ def run_demo(output_directory):
     )
     metric_by_label = {metric.label: metric for metric in metrics}
     summary = summarize_candidate_metrics(metrics)
+    training_rows = build_training_feature_rows(
+        dataset.tof_channel,
+        dataset.energy_channel,
+        tuple(AcceptedSelection(
+            selection_id=candidate.label,
+            label=candidate.label,
+            polygon=candidate.polygon,
+        ) for candidate in candidates),
+        loci=dataset.loci,
+        measurement_id="synthetic-kist-preset",
+    )
 
     np.savez_compressed(
         output_directory / "synthetic_tofe_events.npz",
@@ -100,6 +114,9 @@ def run_demo(output_directory):
                 metric.false_negative,
                 candidate.polygon.shape[0],
             ))
+    (output_directory / "ml_training_rows.tsv").write_text(
+        training_rows_tsv(training_rows), encoding="utf-8"
+    )
 
     figure, axis = plt.subplots(figsize=(12, 7.2), constrained_layout=True)
     image = axis.pcolormesh(
@@ -161,14 +178,16 @@ def run_demo(output_directory):
     figure.savefig(output_directory / "synthetic_autoselection.png", dpi=180)
     plt.close(figure)
 
-    return dataset, candidates, metrics, summary
+    return dataset, candidates, metrics, summary, training_rows
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", default="output/tofe_synthetic_demo")
     arguments = parser.parse_args()
-    dataset, candidates, metrics, summary = run_demo(arguments.output)
+    dataset, candidates, metrics, summary, training_rows = run_demo(
+        arguments.output
+    )
     print(f"beam_energy_mev={dataset.geometry.beam_energy_mev:.3f}")
     print(f"events={dataset.tof_channel.size}")
     print(f"candidates={len(candidates)}")
@@ -186,6 +205,10 @@ def main():
         f"micro_recall={summary.recall:.3f}, "
         f"micro_f1={summary.f1:.3f}, "
         f"micro_iou={summary.event_iou:.3f}"
+    )
+    print(
+        f"training_rows={len(training_rows)}, "
+        f"training_features={len(training_rows[0].as_dict()) if training_rows else 0}"
     )
 
 
