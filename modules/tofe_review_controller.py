@@ -13,6 +13,7 @@ import numpy as np
 from modules.tofe_candidate_review import CandidateReviewSession
 from modules.tofe_candidate_review import CandidateReviewStatus
 from modules.tofe_selection_adapter import accept_candidate_as_selection
+from modules.tofe_training_data import reviewed_candidates_as_training_selections
 
 
 @dataclass(frozen=True)
@@ -62,6 +63,11 @@ class CandidateReviewController:
                 CandidateReviewStatus.EDITING,
             )
         )
+
+    @property
+    def reviewed_training_selections(self):
+        """Return only finalized review decisions as transient ML labels."""
+        return reviewed_candidates_as_training_selections(self.session.items)
 
     def polygon_text(self, candidate_id):
         polygon = self.session.get(candidate_id).working.polygon

@@ -937,3 +937,78 @@ Next:
    when no compatible model exists.
 3. Add grouped measurement-level train/validation splitting and verify it on
    synthetic overlap, missing-element, and shifted-locus scenarios.
+
+## 2026-09-25 16:12 KST - Review labels and optional ML baseline
+
+Implemented:
+
+- Converted finalized candidate review states into transient ML labels without
+  accessing the Potku selector. Accepted proposals become positive examples,
+  rejected proposals become negative examples, and pending/editing proposals
+  are omitted because they have no final user decision.
+- When an edited proposal is accepted, the original proposal is retained as a
+  negative row and the edited polygon becomes the positive row. This preserves
+  the correction signal instead of keeping only the final accepted geometry.
+- Exposed the finalized labels through `CandidateReviewController` while
+  preserving the existing rule that only explicit Accept invokes selection
+  persistence. Reject and label extraction perform zero selector writes.
+- Added deterministic NumPy logistic regression using the 21 numeric fields
+  from the 25-field training schema. Training requires both accepted and
+  rejected examples and uses standardized features with L2 regularization.
+- Added portable JSON serialization with format version, ordered feature names,
+  and a SHA-256 schema fingerprint. Missing, malformed, old-schema, or invalid
+  models safely retain the original heuristic confidence and report a fallback
+  reason.
+- Added a reproducible ML demo using the four accepted synthetic polygons and
+  four deliberately displaced rejected polygons. The demo writes labeled rows,
+  model JSON, and per-polygon probability TSV without installing a model into
+  Potku or changing a selection file.
+- Updated `USER_ACTIONS.md` to request both the original and final polygon for
+  edited decisions and to state that the synthetic-only model must not be used
+  as real-data calibration.
+
+Verification:
+
+- `python -m unittest tests.unit.test_tofe_ml`
+  `tests.unit.test_tofe_training_data tests.unit.test_tofe_review_controller`
+  `tests.unit.test_tofe_candidate_metrics tests.unit.test_tofe_selection_adapter`
+  `tests.unit.test_tofe_candidate_review tests.unit.test_tofe_candidate`
+  `tests.unit.test_tofe_overlay tests.unit.test_tofe_synthetic`
+  `tests.unit.test_tofe_theory tests.unit.test_tofe_stopping`
+  `tests.unit.test_tofe_report`: **104 tests passed**.
+- `python -m compileall -q` for the model, feature extractor, review controller,
+  synthetic ML demo, and tests: **passed**.
+- `git diff --check`: **passed**.
+- Default spectrum remained **25,000 events** with **4/4 candidates**, micro F1
+  **0.909**, and event IoU **0.834**.
+- Synthetic review dataset: **8 rows** comprising four accepted polygons and
+  four polygons shifted by 10 detector FWHM. Mean predicted acceptance was
+  **0.939** for positives and **0.061** for negatives; all 8 training rows were
+  classified correctly at a 0.5 threshold.
+- Model JSON was saved and loaded with identical probabilities. Missing,
+  malformed, and schema-mismatched model tests all returned the unchanged
+  heuristic confidence.
+
+Failure / limitation:
+
+- No automated test failed in the completed implementation.
+- The reported 100% classification is resubstitution accuracy on an intentionally
+  simple synthetic eight-row dataset. It does not measure generalization or
+  real ToF-ERD performance.
+- The synthetic negative polygons use a large 10-FWHM displacement. Real edits
+  and borderline rejections will be harder and are required before threshold
+  or probability calibration.
+- The model is not yet connected to the GUI review rows. Until a real model is
+  validated, GUI confidence remains the existing heuristic value.
+- Real KIST events, review decisions, PyQt5, and JIBAL remain unavailable.
+  Existing Potku operation and explicit approval-only selection saving are
+  unchanged.
+
+Next:
+
+1. Add deterministic grouped train/validation splitting by measurement so
+   polygons from one spectrum cannot leak into both sets.
+2. Generate shifted, overlapping, missing-element, and near-boundary synthetic
+   measurements, then report held-out precision, recall, F1, and calibration.
+3. Allow the review dialog to display both heuristic and ML confidence only
+   after a compatible validated model is explicitly configured.

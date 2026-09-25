@@ -93,6 +93,51 @@ def accepted_selections_from_potku(
     return tuple(accepted)
 
 
+def reviewed_candidates_as_training_selections(review_items):
+    """Convert final review decisions into positive and negative polygons.
+
+    Pending and actively edited proposals are omitted because they have no
+    final user decision.  A rejected working polygon becomes one negative
+    example.  An accepted polygon becomes positive; if the user edited it,
+    the original proposal is also retained as a negative example.  This
+    function only copies transient NumPy data and never accesses a selector.
+    """
+    selections = []
+    for item in review_items:
+        status = getattr(getattr(item, "status", None), "value", None)
+        candidate_id = str(getattr(item, "candidate_id", "")).strip()
+        original = getattr(item, "original", None)
+        working = getattr(item, "working", None)
+        if status not in ("accepted", "rejected"):
+            continue
+        if not candidate_id or original is None or working is None:
+            raise ValueError("Final review item is incomplete")
+        original_polygon = _validated_closed_polygon(original.polygon)
+        working_polygon = _validated_closed_polygon(working.polygon)
+        if status == "accepted":
+            if not _same_polygon(original_polygon, working_polygon):
+                selections.append(AcceptedSelection(
+                    selection_id=f"{candidate_id}:original",
+                    label=str(original.label),
+                    polygon=original_polygon,
+                    target_accepted=0,
+                ))
+            selections.append(AcceptedSelection(
+                selection_id=f"{candidate_id}:accepted",
+                label=str(working.label),
+                polygon=working_polygon,
+                target_accepted=1,
+            ))
+        else:
+            selections.append(AcceptedSelection(
+                selection_id=f"{candidate_id}:rejected",
+                label=str(working.label),
+                polygon=working_polygon,
+                target_accepted=0,
+            ))
+    return tuple(selections)
+
+
 def build_training_feature_rows(
         tof_channel, energy_channel, selections: Iterable, loci=(),
         measurement_id="") -> Tuple[TrainingFeatureRow, ...]:
@@ -192,6 +237,10 @@ def _validated_selection(selection):
         polygon=_validated_closed_polygon(selection.polygon),
         target_accepted=int(selection.target_accepted),
     )
+
+
+def _same_polygon(first, second):
+    return first.shape == second.shape and np.allclose(first, second)
 
 
 def _validated_closed_polygon(polygon):

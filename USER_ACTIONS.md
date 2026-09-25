@@ -38,9 +38,12 @@ turn the result into a calibrated KIST workflow.
    expected element that is absent.  These cases are now explicit synthetic
    tests and need a real-data comparison before threshold calibration.
 10. When the review workflow is tested, keep a small record of automatic
-    candidates that were accepted unchanged, edited, or rejected.  Existing
+    candidates that were accepted unchanged, edited, or rejected.  For an edit,
+    retain both the original proposal and the final accepted polygon. Existing
     `.selections` files contain positive examples, but these review decisions
     are needed to teach the correction model what a poor proposal looks like.
+    The current baseline model contains synthetic decisions only and must not
+    be enabled as a real-data calibration until these records are available.
 
 No real measurement is currently present in this working copy.  Until these
 items arrive, confidence values measure performance on synthetic data and must

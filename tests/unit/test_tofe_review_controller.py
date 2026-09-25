@@ -94,6 +94,10 @@ class TestCandidateReviewController(unittest.TestCase):
         self.assertEqual(self.selector.update_calls, 0)
         self.assertFalse(self.selector.selection_file.exists())
         self.assertEqual(self.controller.active_candidates, ())
+        decisions = self.controller.reviewed_training_selections
+        self.assertEqual(len(decisions), 1)
+        self.assertEqual(decisions[0].selection_id, "16O#1:rejected")
+        self.assertEqual(decisions[0].target_accepted, 0)
 
     def test_accept_parses_element_and_saves_exactly_once(self):
         selection = self.controller.accept("16O#1", " 16O ")
@@ -104,6 +108,31 @@ class TestCandidateReviewController(unittest.TestCase):
         self.assertEqual(selection.kwargs["element"], "O")
         self.assertEqual(selection.kwargs["isotope"], 16)
         self.assertEqual(self.controller.active_candidates, ())
+        decisions = self.controller.reviewed_training_selections
+        self.assertEqual(len(decisions), 1)
+        self.assertEqual(decisions[0].target_accepted, 1)
+
+    def test_edited_acceptance_labels_original_negative_and_edit_positive(self):
+        original = candidate().polygon.copy()
+        self.controller.begin_edit("16O#1")
+        self.controller.apply_polygon_text(
+            "16O#1", "14 20\n30 20\n31 40\n14 41"
+        )
+        self.controller.accept("16O#1", "16O")
+
+        decisions = self.controller.reviewed_training_selections
+
+        self.assertEqual(len(decisions), 2)
+        self.assertEqual(
+            [decision.target_accepted for decision in decisions], [0, 1]
+        )
+        np.testing.assert_allclose(decisions[0].polygon, original)
+        self.assertFalse(np.allclose(
+            decisions[0].polygon, decisions[1].polygon
+        ))
+
+    def test_pending_candidate_has_no_training_label(self):
+        self.assertEqual(self.controller.reviewed_training_selections, ())
 
     def test_empty_element_is_rejected_without_calling_parser(self):
         with self.assertRaisesRegex(ValueError, "Confirm"):
