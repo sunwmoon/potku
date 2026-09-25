@@ -806,3 +806,68 @@ Next:
    polygon back through the same review controller.
 3. Exercise the dialog with PyQt5, JIBAL, and one real measurement once those
    dependencies and data are available.
+
+## 2026-09-25 10:08 KST - Synthetic truth-event selection metrics
+
+Implemented:
+
+- Added Qt-independent evaluation of automatic polygons against per-event
+  synthetic truth labels. Each element now reports selected/true event counts,
+  true positives, false positives, false negatives, precision, recall, F1, and
+  event IoU.
+- Added micro-averaged summary metrics and explicit rows for expected elements
+  with no candidate. Missing bananas therefore remain visible with
+  `detected=False` and zero recall instead of disappearing from the report.
+- Added a dependency-free, vectorized point-in-polygon implementation with
+  finite, closed, and non-degenerate polygon validation.
+- Extended the synthetic demo TSV and plot labels with event-level overlap
+  metrics. The raw events and automatic polygons are otherwise unchanged.
+- Added an overlapping-banana scenario using two labels at the same physical
+  locus. Both ridges are detected, but cross-label contamination reduces
+  precision to about 0.50 and event IoU below 0.47.
+- Added an absent-element scenario. A 16O locus searched against a synthetic
+  spectrum containing only 12C produces no 16O candidate and is reported as
+  not detected.
+- Updated `USER_ACTIONS.md` to request a real difficult spectrum containing
+  overlapping bananas or an expected element that is absent, if available.
+
+Verification:
+
+- `python -m unittest tests.unit.test_tofe_candidate_metrics`
+  `tests.unit.test_tofe_review_controller tests.unit.test_tofe_selection_adapter`
+  `tests.unit.test_tofe_candidate_review tests.unit.test_tofe_candidate`
+  `tests.unit.test_tofe_overlay tests.unit.test_tofe_synthetic`
+  `tests.unit.test_tofe_theory tests.unit.test_tofe_stopping`
+  `tests.unit.test_tofe_report`: **86 tests passed**.
+- Default 25,000-event demo: **4/4 candidates**, micro precision **0.992**,
+  recall **0.839**, F1 **0.909**, and event IoU **0.834**.
+- Per-element event IoU: 1H **0.880**, 12C **0.849**, 16O **0.817**, and
+  28Si **0.789**.
+- Fully overlapping 12C labels: precision **0.496 / 0.504**, recall
+  **0.845 / 0.860**, and event IoU **0.455 / 0.466**.
+- `python -m compileall -q` for the metric module, demo, and tests:
+  **passed**.
+- `git diff --check`: **passed**.
+
+Failure / limitation:
+
+- No automated test failed in the completed implementation.
+- Event IoU measures labeled event membership, not geometric polygon-area IoU.
+  Its value depends on the synthetic event distribution and background density,
+  which is appropriate for this generator but is not a calibrated real-data
+  accuracy probability.
+- Identical overlapping loci expose contamination but cannot by themselves
+  decide how shared events should be assigned. The later ML stage needs shape,
+  physics-offset, and neighbouring-candidate features for that decision.
+- Real KIST events, accepted selections, PyQt5, and JIBAL remain unavailable in
+  this environment. Existing Potku operation and the approval-only selection
+  save boundary are unchanged.
+
+Next:
+
+1. Convert accepted Potku selections plus their enclosed measurement events
+   into ML-ready rows with physics-offset and polygon-shape features.
+2. Add candidate-to-candidate overlap and nearest-neighbour features so the ML
+   correction model can identify ambiguous shared ridges.
+3. Add non-persistent drag handles for proposal vertices and validate the GUI
+   with PyQt5 and one real measurement when available.

@@ -18,6 +18,8 @@ import numpy as np
 from modules.tofe_candidate import CandidateSearchSettings
 from modules.tofe_candidate import build_candidate_histogram
 from modules.tofe_candidate import propose_banana_candidates
+from modules.tofe_candidate_metrics import evaluate_candidate_truth
+from modules.tofe_candidate_metrics import summarize_candidate_metrics
 from modules.tofe_synthetic import TofeGeometry
 from modules.tofe_synthetic import generate_synthetic_events
 
@@ -56,6 +58,15 @@ def run_demo(output_directory):
             minimum_confidence=0.18,
         ),
     )
+    metrics = evaluate_candidate_truth(
+        candidates,
+        dataset.tof_channel,
+        dataset.energy_channel,
+        dataset.truth_label,
+        expected_labels=[locus.label for locus in dataset.loci],
+    )
+    metric_by_label = {metric.label: metric for metric in metrics}
+    summary = summarize_candidate_metrics(metrics)
 
     np.savez_compressed(
         output_directory / "synthetic_tofe_events.npz",
@@ -68,15 +79,25 @@ def run_demo(output_directory):
         writer = csv.writer(stream, delimiter="\t")
         writer.writerow((
             "element", "confidence", "coverage", "contrast",
-            "theory_adherence", "polygon_vertices",
+            "theory_adherence", "event_precision", "event_recall",
+            "event_f1", "event_iou", "true_positive", "false_positive",
+            "false_negative", "polygon_vertices",
         ))
         for candidate in candidates:
+            metric = metric_by_label[candidate.label]
             writer.writerow((
                 candidate.label,
                 f"{candidate.confidence:.4f}",
                 f"{candidate.coverage:.4f}",
                 f"{candidate.contrast:.4f}",
                 f"{candidate.theory_adherence:.4f}",
+                f"{metric.precision:.4f}",
+                f"{metric.recall:.4f}",
+                f"{metric.f1:.4f}",
+                f"{metric.event_iou:.4f}",
+                metric.true_positive,
+                metric.false_positive,
+                metric.false_negative,
                 candidate.polygon.shape[0],
             ))
 
@@ -121,7 +142,8 @@ def run_demo(output_directory):
         axis.text(
             candidate.ridge[-1, 0],
             candidate.ridge[-1, 1],
-            f" {candidate.label} {candidate.confidence:.0%}",
+            f" {candidate.label} conf {candidate.confidence:.0%} "
+            f"IoU {metric_by_label[candidate.label].event_iou:.0%}",
             color="#35E3A1",
             fontsize=9,
         )
@@ -139,22 +161,32 @@ def run_demo(output_directory):
     figure.savefig(output_directory / "synthetic_autoselection.png", dpi=180)
     plt.close(figure)
 
-    return dataset, candidates
+    return dataset, candidates, metrics, summary
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", default="output/tofe_synthetic_demo")
     arguments = parser.parse_args()
-    dataset, candidates = run_demo(arguments.output)
+    dataset, candidates, metrics, summary = run_demo(arguments.output)
     print(f"beam_energy_mev={dataset.geometry.beam_energy_mev:.3f}")
     print(f"events={dataset.tof_channel.size}")
     print(f"candidates={len(candidates)}")
+    metric_by_label = {metric.label: metric for metric in metrics}
     for candidate in candidates:
+        metric = metric_by_label[candidate.label]
         print(
             f"{candidate.label}: confidence={candidate.confidence:.3f}, "
-            f"coverage={candidate.coverage:.3f}"
+            f"coverage={candidate.coverage:.3f}, "
+            f"precision={metric.precision:.3f}, "
+            f"recall={metric.recall:.3f}, IoU={metric.event_iou:.3f}"
         )
+    print(
+        f"micro_precision={summary.precision:.3f}, "
+        f"micro_recall={summary.recall:.3f}, "
+        f"micro_f1={summary.f1:.3f}, "
+        f"micro_iou={summary.event_iou:.3f}"
+    )
 
 
 if __name__ == "__main__":

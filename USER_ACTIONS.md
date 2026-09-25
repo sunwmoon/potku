@@ -32,6 +32,9 @@ turn the result into a calibrated KIST workflow.
    isotope (for example, 16O) or to the natural element (O).  The synthetic
    demonstration uses isotope-specific labels.  The new Accept dialog requires
    the element/isotope to be confirmed and shows a final warning before saving.
+9. If possible, include one difficult spectrum with overlapping bananas or an
+   expected element that is absent.  These cases are now explicit synthetic
+   tests and need a real-data comparison before threshold calibration.
 
 No real measurement is currently present in this working copy.  Until these
 items arrive, confidence values measure performance on synthetic data and must

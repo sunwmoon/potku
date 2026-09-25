@@ -5,6 +5,8 @@ import numpy as np
 from modules.tofe_candidate import CandidateSearchSettings
 from modules.tofe_candidate import build_candidate_histogram
 from modules.tofe_candidate import propose_banana_candidates
+from modules.tofe_candidate_metrics import evaluate_candidate_truth
+from modules.tofe_candidate_metrics import summarize_candidate_metrics
 from modules.tofe_synthetic import TofeGeometry
 from modules.tofe_synthetic import generate_synthetic_events
 
@@ -85,6 +87,18 @@ class TestTofeSynthetic(unittest.TestCase):
             np.testing.assert_allclose(
                 candidate.polygon[0], candidate.polygon[-1]
             )
+        metrics = evaluate_candidate_truth(
+            candidates,
+            dataset.tof_channel,
+            dataset.energy_channel,
+            dataset.truth_label,
+            expected_labels=[locus.label for locus in dataset.loci],
+        )
+        summary = summarize_candidate_metrics(metrics)
+        self.assertEqual(summary.detected_labels, 4)
+        self.assertGreater(summary.precision, 0.98)
+        self.assertGreater(summary.recall, 0.80)
+        self.assertGreater(summary.event_iou, 0.80)
 
 
 if __name__ == "__main__":
